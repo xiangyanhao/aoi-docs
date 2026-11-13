@@ -1,4 +1,5 @@
 ﻿@page "/"
+@using Aoi.Playground.Components
 @using Aoi.Playground.Services
 @inject NavigationManager Nav
 @inject IJSRuntime Js
@@ -15,6 +16,25 @@
             </div>
         </div>
         <div class="top-actions">
+            <button class="btn btn-theme" type="button" @onclick="ToggleThemeAsync"
+                    title="@(_isDark ? "Switch to light mode" : "Switch to dark mode")"
+                    aria-label="@(_isDark ? "Switch to light mode" : "Switch to dark mode")">
+                @if (_isDark)
+                {
+                    <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <circle cx="12" cy="12" r="4" />
+                        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                    </svg>
+                    <span>Light</span>
+                }
+                else
+                {
+                    <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8">
+                        <path d="M21 14.5A8.5 8.5 0 1 1 9.5 3 7 7 0 0 0 21 14.5z" />
+                    </svg>
+                    <span>Dark</span>
+                }
+            </button>
             <button class="btn" type="button" @onclick="ShareAsync" title="Copy share link">Share</button>
             <button class="btn" type="button" @onclick="ClearOutput">Clear</button>
             <button class="btn btn-primary" type="button" disabled="@_running" @onclick="RunAsync">
@@ -45,12 +65,10 @@
                     <h2>Source</h2>
                     <span class="meta">Ctrl/⌘ + Enter</span>
                 </div>
-                <textarea class="editor"
-                          @bind="_source"
-                          @bind:event="oninput"
-                          @onkeydown="OnEditorKeyDown"
-                          spellcheck="false"
-                          aria-label="Aoi source editor"></textarea>
+                <CodeEditor Value="_source"
+                            ValueChanged="OnSourceChanged"
+                            OnRunRequested="RunAsync"
+                            AriaLabel="Aoi source editor" />
             </section>
 
             <section class="panel" style="animation-delay: 0.08s">
@@ -92,6 +110,8 @@
     private bool _running;
     private string? _toast;
     private CancellationTokenSource? _toastCts;
+    private bool _isDark = true;
+    private bool _themeReady;
 
     protected override void OnInitialized()
     {
@@ -107,17 +127,55 @@
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _themeReady) return;
+        _themeReady = true;
+        try
+        {
+            var stored = await Js.InvokeAsync<string?>("aoiPlayground.getStoredTheme");
+            if (stored is "light" or "dark")
+                _isDark = stored == "dark";
+            else
+                _isDark = await Js.InvokeAsync<bool>("aoiPlayground.prefersDark");
+
+            await ApplyThemeAsync();
+            StateHasChanged();
+        }
+        catch
+        {
+            // JS may not be ready yet on first paint; keep default dark.
+        }
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        _isDark = !_isDark;
+        await ApplyThemeAsync();
+    }
+
+    private async Task ApplyThemeAsync()
+    {
+        var theme = _isDark ? "dark" : "light";
+        try
+        {
+            await Js.InvokeVoidAsync("aoiPlayground.applyTheme", theme);
+            await Js.InvokeVoidAsync("aoiPlayground.setStoredTheme", theme);
+        }
+        catch { /* ignore */ }
+    }
+
+    private void OnSourceChanged(string value)
+    {
+        _source = value;
+        _activeSampleId = null;
+    }
+
     private void LoadSample(Sample sample)
     {
         _source = sample.Source;
         _activeSampleId = sample.Id;
         _error = null;
-    }
-
-    private async Task OnEditorKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey))
-            await RunAsync();
     }
 
     private async Task RunAsync()
@@ -127,7 +185,6 @@
         _error = null;
         StateHasChanged();
 
-        // Yield so the UI can show the running state before sync eval.
         await Task.Yield();
         var result = AoiRunner.Run(_source);
         _output = result.Output;
