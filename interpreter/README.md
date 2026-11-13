@@ -2,6 +2,13 @@
 
 基于 .NET 8 的 Aoi 语言树遍历解释器，实现语言设计文档中的核心语法。
 
+项目结构：
+
+- `Aoi.Core`：共享的词法 / 语法 / 运行时库（供 CLI 与 playground 使用）
+- `Aoi.Interpreter`：命令行入口
+
+浏览器 playground 见 [`../playground/`](../playground/)。
+
 ## 依赖
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download)

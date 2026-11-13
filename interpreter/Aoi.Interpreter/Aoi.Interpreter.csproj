@@ -9,4 +9,8 @@
     <AssemblyName>aoi</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Aoi.Core\Aoi.Core.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -1,0 +1,178 @@
+﻿@page "/"
+@using Aoi.Playground.Services
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+<PageTitle>Aoi Playground</PageTitle>
+
+<div class="shell">
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true"></div>
+            <div>
+                <h1>Aoi</h1>
+                <p>在浏览器里运行的轻量解释型语言 playground</p>
+            </div>
+        </div>
+        <div class="top-actions">
+            <button class="btn" type="button" @onclick="ShareAsync" title="Copy share link">Share</button>
+            <button class="btn" type="button" @onclick="ClearOutput">Clear</button>
+            <button class="btn btn-primary" type="button" disabled="@_running" @onclick="RunAsync">
+                @(_running ? "Running…" : "Run")
+            </button>
+        </div>
+    </header>
+
+    <div class="workspace">
+        <aside class="samples">
+            <h2>Samples</h2>
+            <div class="sample-list">
+                @foreach (var sample in SampleCatalog.All)
+                {
+                    <button class="sample @(sample.Id == _activeSampleId ? "active" : null)"
+                            type="button"
+                            @onclick="() => LoadSample(sample)">
+                        <span class="sample-title">@sample.Title</span>
+                        <span class="sample-blurb">@sample.Blurb</span>
+                    </button>
+                }
+            </div>
+        </aside>
+
+        <div class="stage">
+            <section class="panel">
+                <div class="panel-head">
+                    <h2>Source</h2>
+                    <span class="meta">Ctrl/⌘ + Enter</span>
+                </div>
+                <textarea class="editor"
+                          @bind="_source"
+                          @bind:event="oninput"
+                          @onkeydown="OnEditorKeyDown"
+                          spellcheck="false"
+                          aria-label="Aoi source editor"></textarea>
+            </section>
+
+            <section class="panel" style="animation-delay: 0.08s">
+                <div class="panel-head">
+                    <h2>Output</h2>
+                    @if (_lastElapsedMs is long ms)
+                    {
+                        <span class="meta">@ms ms</span>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <pre class="output error">@_error@(!string.IsNullOrEmpty(_output) ? "\n\n" + _output : "")</pre>
+                }
+                else if (string.IsNullOrEmpty(_output) && _lastElapsedMs is null)
+                {
+                    <pre class="output empty">运行结果会出现在这里。</pre>
+                }
+                else
+                {
+                    <pre class="output">@(string.IsNullOrEmpty(_output) ? "(no output)" : _output)</pre>
+                }
+            </section>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_toast))
+{
+    <div class="toast" role="status">@_toast</div>
+}
+
+@code {
+    private string _source = SampleCatalog.Default.Source;
+    private string? _activeSampleId = SampleCatalog.Default.Id;
+    private string _output = "";
+    private string? _error;
+    private long? _lastElapsedMs;
+    private bool _running;
+    private string? _toast;
+    private CancellationTokenSource? _toastCts;
+
+    protected override void OnInitialized()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (!string.IsNullOrEmpty(uri.Fragment) && uri.Fragment.StartsWith("#code="))
+        {
+            var decoded = ShareCodec.Decode(uri.Fragment["#code=".Length..]);
+            if (!string.IsNullOrEmpty(decoded))
+            {
+                _source = decoded;
+                _activeSampleId = null;
+            }
+        }
+    }
+
+    private void LoadSample(Sample sample)
+    {
+        _source = sample.Source;
+        _activeSampleId = sample.Id;
+        _error = null;
+    }
+
+    private async Task OnEditorKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey))
+            await RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        if (_running) return;
+        _running = true;
+        _error = null;
+        StateHasChanged();
+
+        // Yield so the UI can show the running state before sync eval.
+        await Task.Yield();
+        var result = AoiRunner.Run(_source);
+        _output = result.Output;
+        _error = result.Error;
+        _lastElapsedMs = result.ElapsedMs;
+        _running = false;
+    }
+
+    private void ClearOutput()
+    {
+        _output = "";
+        _error = null;
+        _lastElapsedMs = null;
+    }
+
+    private async Task ShareAsync()
+    {
+        var payload = ShareCodec.Encode(_source);
+        var url = Nav.ToAbsoluteUri(Nav.BaseUri).GetLeftPart(UriPartial.Path).TrimEnd('/') + "/#code=" + payload;
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            await ShowToast("Share link copied.");
+        }
+        catch
+        {
+            await ShowToast(url);
+        }
+    }
+
+    private async Task ShowToast(string message)
+    {
+        _toastCts?.Cancel();
+        _toastCts = new CancellationTokenSource();
+        var token = _toastCts.Token;
+        _toast = message;
+        try
+        {
+            await Task.Delay(2200, token);
+            if (!token.IsCancellationRequested)
+            {
+                _toast = null;
+                StateHasChanged();
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+}

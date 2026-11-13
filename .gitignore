@@ -4,3 +4,6 @@
 *.user
 *.swp
 .DS_Store
+
+publish/
+*.DotSettings.user

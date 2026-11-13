@@ -11,6 +11,14 @@
 
 Aoi 是一个静态强类型的、运行在 .NET 上的轻量解释型语言。其名字来源于《你和她和她的恋爱。》中的女主向日葵（Mukou Aoi）。
 
+## 在线 Playground
+
+浏览器端 playground（Blazor WebAssembly）可部署到 GitHub Pages：
+
+- 源码与本地运行：[playground/README.md](playground/README.md)
+- 合并到 `master` 后由 Actions 自动发布；首次需在仓库 Settings → Pages 将 Source 设为 **GitHub Actions**
+- 预计地址：`https://xiangyanhao.github.io/aoi-docs/`
+
 ## 快速开始
 
 需要安装 [.NET 8 SDK](https://dotnet.microsoft.com/download)。

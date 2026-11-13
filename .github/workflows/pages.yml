@@ -1,0 +1,63 @@
+name: Deploy Playground to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "playground/**"
+      - "interpreter/Aoi.Core/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish Blazor WASM
+        run: |
+          REPO_NAME="${GITHUB_REPOSITORY#*/}"
+          BASE_HREF="/${REPO_NAME}/"
+          # User/org root sites (username.github.io) need "/"
+          if [ "$REPO_NAME" = "${GITHUB_REPOSITORY_OWNER}.github.io" ]; then
+            BASE_HREF="/"
+          fi
+          echo "Using base href: ${BASE_HREF}"
+          sed -i "s|<base href=\"/\" />|<base href=\"${BASE_HREF}\" />|" playground/Aoi.Playground/wwwroot/index.html
+          dotnet publish playground/Aoi.Playground/Aoi.Playground.csproj -c Release -o publish
+          # Ensure Pages ignores Jekyll processing
+          touch publish/wwwroot/.nojekyll
+          # Keep a 404 fallback for client routes
+          cp playground/Aoi.Playground/wwwroot/404.html publish/wwwroot/404.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: publish/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
