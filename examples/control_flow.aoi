@@ -1,0 +1,21 @@
+let n = 5;
+when n {
+is > 0 then {
+    printLine "positive";
+}
+is < 0 then {
+    printLine "negative";
+}
+else {
+    printLine "zero";
+}
+}
+
+for i in 0..3 do {
+    printLine i;
+}
+
+let opt = some 42;
+if opt is some as x then {
+    printLine x;
+}
