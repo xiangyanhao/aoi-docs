@@ -1,8 +1,21 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Aoi.Interpreter.Ast;
 
 namespace Aoi.Interpreter.Runtime;
+
+public sealed class InterpreterOptions
+{
+    /// <summary>
+    /// Maximum nested operator/closure calls before reporting stack overflow.
+    /// Kept modest because each Aoi call consumes several CLR frames.
+    /// </summary>
+    public int MaxCallDepth { get; init; } = 1_024;
+
+    /// <summary>Maximum expression/statement evaluation steps before aborting runaway programs.</summary>
+    public long MaxSteps { get; init; } = 50_000_000;
+}
 
 public sealed class Interpreter
 {
@@ -16,17 +29,58 @@ public sealed class Interpreter
     private readonly Dictionary<(string From, string To), UserOperator> _converts = new();
     private readonly Dictionary<string, UserOperator> _literals = new();
     private readonly TextWriter _output;
+    private readonly int _maxCallDepth;
+    private readonly long _maxSteps;
+    private int _callDepth;
+    private long _steps;
 
-    public Interpreter(TextWriter? output = null)
+    public Interpreter(TextWriter? output = null, InterpreterOptions? options = null)
     {
         _output = output ?? Console.Out;
+        options ??= new InterpreterOptions();
+        _maxCallDepth = Math.Max(1, options.MaxCallDepth);
+        _maxSteps = Math.Max(1, options.MaxSteps);
         RegisterBuiltins();
     }
 
     public void Execute(ProgramNode program)
     {
+        _callDepth = 0;
+        _steps = 0;
         foreach (var stmt in program.Statements)
             ExecStmt(stmt);
+    }
+
+    private void Tick()
+    {
+        if (++_steps > _maxSteps)
+            throw new AoiException($"Execution limit exceeded ({_maxSteps} steps). Possible infinite loop.");
+
+        // Periodically probe CLR stack so deep Eval chains fail as AoiException, not process abort.
+        if ((_steps & 0x3F) == 0)
+            EnsureStack();
+    }
+
+    private void EnterCall()
+    {
+        if (_callDepth >= _maxCallDepth)
+            throw new AoiException($"Stack overflow: call depth exceeded {_maxCallDepth}.");
+        EnsureStack();
+        _callDepth++;
+    }
+
+    private void LeaveCall() => _callDepth--;
+
+    private static void EnsureStack()
+    {
+        try
+        {
+            RuntimeHelpers.EnsureSufficientExecutionStack();
+        }
+        catch (InsufficientExecutionStackException)
+        {
+            throw new AoiException("Stack overflow: insufficient execution stack.");
+        }
     }
 
     private void RegisterBuiltins()
@@ -56,6 +110,7 @@ public sealed class Interpreter
 
     private void ExecStmt(Stmt stmt)
     {
+        Tick();
         switch (stmt)
         {
             case ExprStmt e:
@@ -292,6 +347,7 @@ public sealed class Interpreter
 
     public AoiValue Eval(Expr expr)
     {
+        Tick();
         switch (expr)
         {
             case IntExpr i: return new IntValue(i.Value);
@@ -662,11 +718,15 @@ public sealed class Interpreter
             case "*" when left is FloatValue lf && right is FloatValue rf: return new FloatValue(lf.Value * rf.Value);
             case "*" when left is IntValue li2 && right is FloatValue rf2: return new FloatValue(li2.Value * rf2.Value);
             case "*" when left is FloatValue lf2 && right is IntValue ri2: return new FloatValue(lf2.Value * ri2.Value);
-            case "/" when left is IntValue li && right is IntValue ri: return new IntValue(li.Value / ri.Value);
+            case "/" when left is IntValue li && right is IntValue ri:
+                if (ri.Value == 0) throw new AoiException("Division by zero");
+                return new IntValue(li.Value / ri.Value);
             case "/" when left is FloatValue lf && right is FloatValue rf: return new FloatValue(lf.Value / rf.Value);
             case "/" when left is IntValue li2 && right is FloatValue rf2: return new FloatValue(li2.Value / rf2.Value);
             case "/" when left is FloatValue lf2 && right is IntValue ri2: return new FloatValue(lf2.Value / ri2.Value);
-            case "%" when left is IntValue li && right is IntValue ri: return new IntValue(li.Value % ri.Value);
+            case "%" when left is IntValue li && right is IntValue ri:
+                if (ri.Value == 0) throw new AoiException("Division by zero");
+                return new IntValue(li.Value % ri.Value);
             case "%" when left is FloatValue lf && right is FloatValue rf: return new FloatValue(lf.Value % rf.Value);
             case "<<" when left is IntValue li && right is IntValue ri: return new IntValue(li.Value << (int)ri.Value);
             case ">>" when left is IntValue li && right is IntValue ri: return new IntValue(li.Value >> (int)ri.Value);
@@ -702,6 +762,7 @@ public sealed class Interpreter
 
     private AoiValue InvokeUserOp(UserOperator op, AoiValue? left, AoiValue right)
     {
+        EnterCall();
         var prev = _env;
         _env = new Environment(prev);
         try
@@ -712,7 +773,11 @@ public sealed class Interpreter
             try { return Eval(op.Body); }
             catch (AoiReturnException ret) { return ret.Value; }
         }
-        finally { _env = prev; }
+        finally
+        {
+            _env = prev;
+            LeaveCall();
+        }
     }
 
     private OperatorValue WrapOperator(UserOperator op)
@@ -743,6 +808,7 @@ public sealed class Interpreter
         {
             return new OperatorValue("closure", true, (interp, left, right) =>
             {
+                interp.EnterCall();
                 var prev = interp._env;
                 interp._env = new Environment(captured);
                 try
@@ -752,11 +818,16 @@ public sealed class Interpreter
                     try { return interp.Eval(ce.Body); }
                     catch (AoiReturnException ret) { return ret.Value; }
                 }
-                finally { interp._env = prev; }
+                finally
+                {
+                    interp._env = prev;
+                    interp.LeaveCall();
+                }
             });
         }
         return new OperatorValue("closure", false, (interp, _, right) =>
         {
+            interp.EnterCall();
             var prev = interp._env;
             interp._env = new Environment(captured);
             try
@@ -765,7 +836,11 @@ public sealed class Interpreter
                 try { return interp.Eval(ce.Body); }
                 catch (AoiReturnException ret) { return ret.Value; }
             }
-            finally { interp._env = prev; }
+            finally
+            {
+                interp._env = prev;
+                interp.LeaveCall();
+            }
         });
     }
 
