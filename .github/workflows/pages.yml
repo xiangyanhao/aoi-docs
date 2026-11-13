@@ -6,6 +6,10 @@ on:
     paths:
       - "playground/**"
       - "interpreter/Aoi.Core/**"
+      - "1-basic-type/**"
+      - "2-basic-grammar/**"
+      - "3-operator/**"
+      - "4-generic-trait/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

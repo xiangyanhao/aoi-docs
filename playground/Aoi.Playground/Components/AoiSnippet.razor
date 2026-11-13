@@ -1,0 +1,69 @@
+@using Aoi.Playground.Services
+@inject NavigationManager Nav
+
+<div class="doc-snippet">
+    <div class="doc-snippet-bar">
+        <span class="doc-snippet-lang">aoi</span>
+        <div class="doc-snippet-actions">
+            <button class="btn btn-tiny" type="button" disabled="@_running" @onclick="RunAsync">
+                @(_running ? "Running…" : "Run")
+            </button>
+            <button class="btn btn-tiny" type="button" @onclick="OpenInPlayground">Edit</button>
+        </div>
+    </div>
+    <pre class="doc-code"><code>@((MarkupString)_html)</code></pre>
+    @if (_ran)
+    {
+        <div class="doc-snippet-out @(_error != null ? "is-error" : null)">
+            <div class="doc-snippet-out-label">
+                Output
+                @if (_elapsed is long ms)
+                {
+                    <span>@ms ms</span>
+                }
+            </div>
+            <pre>@(_error != null
+                ? _error + (!string.IsNullOrEmpty(_output) ? "\n\n" + _output : "")
+                : (string.IsNullOrEmpty(_output) ? "(no output)" : _output))</pre>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Code { get; set; } = "";
+
+    private string _html = "\n";
+    private bool _running;
+    private bool _ran;
+    private string _output = "";
+    private string? _error;
+    private long? _elapsed;
+
+    protected override void OnParametersSet()
+    {
+        _html = AoiHighlighter.ToHtml(Code ?? "");
+    }
+
+    private async Task RunAsync()
+    {
+        if (_running) return;
+        _running = true;
+        _ran = true;
+        _error = null;
+        StateHasChanged();
+        await Task.Yield();
+
+        var result = AoiRunner.Run(Code);
+        _output = result.Output;
+        _error = result.Error;
+        _elapsed = result.ElapsedMs;
+        _running = false;
+    }
+
+    private void OpenInPlayground()
+    {
+        var payload = ShareCodec.Encode(Code);
+        var url = Nav.ToAbsoluteUri(Nav.BaseUri).GetLeftPart(UriPartial.Path).TrimEnd('/') + "/#code=" + payload;
+        Nav.NavigateTo(url, forceLoad: true);
+    }
+}

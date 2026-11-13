@@ -7,3 +7,6 @@
 
 publish/
 *.DotSettings.user
+
+# Generated from repo chapter docs on build (playground/tools/sync-docs.py)
+playground/Aoi.Playground/wwwroot/docs/
