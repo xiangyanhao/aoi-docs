@@ -291,6 +291,14 @@ textarea {
   transform: translateY(0);
 }
 
+a.btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
 .btn-primary {
   background: linear-gradient(180deg, #ffd15e, var(--sun));
   color: var(--primary-fg);
@@ -302,6 +310,13 @@ textarea {
 .btn-primary:hover {
   background: linear-gradient(180deg, #ffd97a, var(--sun-deep));
   border-color: transparent;
+  color: var(--primary-fg);
+}
+
+.btn-github .github-icon {
+  width: 1rem;
+  height: 1rem;
+  display: inline-block;
 }
 
 .btn:disabled {
