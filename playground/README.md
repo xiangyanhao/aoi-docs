@@ -23,6 +23,8 @@ sed -i 's|<base href="/" />|<base href="/aoi-docs/" />|' playground/Aoi.Playgrou
 dotnet publish playground/Aoi.Playground/Aoi.Playground.csproj -c Release -o publish
 ```
 
-合并到 `master` 后，GitHub Actions workflow `.github/workflows/pages.yml` 会自动构建并部署。
+合并到 `master` 后，GitHub Actions workflow `.github/workflows/pages.yml` 会自动构建并部署。部署时会给 `css/app.css` / `js/playground.js` 加上 commit SHA 查询参数，避免浏览器继续用旧缓存（例如播放器从 iframe 换成自建控件后样式错乱）。
 
 首次启用时，在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**。
+
+若本地仍看到旧 UI，对页面做一次强制刷新（Ctrl/⌘+Shift+R）即可。

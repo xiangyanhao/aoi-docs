@@ -28,7 +28,7 @@
                     aria-label="播放进度"
                     @onclick="SeekAsync">
                 <span class="music-bar-track" aria-hidden="true"></span>
-                <span class="music-bar-played" style="width: @(_progress * 100)%" aria-hidden="true"></span>
+                <span class="music-bar-played" style="@PlayedStyle" aria-hidden="true"></span>
             </button>
             <a class="music-open"
                href="https://music.163.com/#/song?id=@SongId"
@@ -63,6 +63,11 @@
     private string? _error;
     private DotNetObjectReference<MusicPlayer>? _self;
     private CancellationTokenSource? _pollCts;
+
+    // Invariant culture so width never becomes "12,5%" in some locales.
+    private string PlayedStyle =>
+        $"width: {(_progress * 100).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%";
+
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

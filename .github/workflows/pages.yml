@@ -43,12 +43,16 @@ jobs:
             BASE_HREF="/"
           fi
           echo "Using base href: ${BASE_HREF}"
+          ASSET_V="${GITHUB_SHA}"
+          echo "Using asset cache-bust: ${ASSET_V}"
           sed -i "s|<base href=\"/\" />|<base href=\"${BASE_HREF}\" />|" \
             playground/Aoi.Playground/wwwroot/index.html \
             playground/Aoi.Playground/wwwroot/404.html
           # Keep 404 meta-refresh pointed at the site base (not a relative ./).
           sed -i "s|content=\"0;URL='/'\"|content=\"0;URL='${BASE_HREF}'\"|" \
             playground/Aoi.Playground/wwwroot/404.html
+          # Bust browser cache for unfingerprinted css/js after each deploy.
+          sed -i "s|?v=dev|?v=${ASSET_V}|g" playground/Aoi.Playground/wwwroot/index.html
           dotnet publish playground/Aoi.Playground/Aoi.Playground.csproj -c Release -o publish \
             -p:StaticWebAssetFingerprintingEnabled=false \
             -p:StaticWebAssetsFingerprintContent=false
@@ -68,6 +72,14 @@ jobs:
           fi
           if ! grep -q '_framework/blazor.webassembly.js' publish/wwwroot/index.html; then
             echo "::error::index.html does not reference _framework/blazor.webassembly.js"
+            exit 1
+          fi
+          if ! grep -q "css/app.css?v=${ASSET_V}" publish/wwwroot/index.html; then
+            echo "::error::index.html missing cache-busted css/app.css?v=${ASSET_V}"
+            exit 1
+          fi
+          if ! grep -q "js/playground.js?v=${ASSET_V}" publish/wwwroot/index.html; then
+            echo "::error::index.html missing cache-busted js/playground.js?v=${ASSET_V}"
             exit 1
           fi
           if ! test -d publish/wwwroot/doc-content; then
