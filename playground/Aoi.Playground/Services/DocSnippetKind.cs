@@ -21,26 +21,36 @@ public static partial class DocSnippetKind
         if (string.IsNullOrWhiteSpace(code)) return false;
         if (TemplateMarker().IsMatch(code)) return false;
 
-        // Generics / traits / dyn are only partially reliable — keep as syntax for now.
-        if (Regex.IsMatch(code, @"\b(trait|impl|dyn)\b"))
-            return false;
-
-        // Generic type parameters on operator declarations are not supported yet
-        // (e.g. `op array convert[T, TRes] ...`).
-        if (Regex.IsMatch(code, @"\bop\b(?:\s+\w+){1,3}\s*\["))
-            return false;
-
-        // Other generic decls that still use placeholder-y type params.
-        if (Regex.IsMatch(code, @"\b(get|set|class|struct|union|enum|convert|literal|type)\s+\w+\s*\["))
-            return false;
-
         // Infix convert *uses* without a convert definition are incomplete demos.
         if (Regex.IsMatch(code, @"\bconvert\b")
             && !Regex.IsMatch(code, @"\bconvert\s+(implicit|explicit)\b")
             && !Regex.IsMatch(code, @"\bop\b[\s\S]*\bconvert\b"))
             return false;
 
-        // Require a declaration or print — bare expression fragments are usually incomplete demos.
+        // Forms the interpreter still cannot parse reliably — keep as syntax.
+        // Generic type decls: class Dictionary[TKey, TValue], struct Vector[T: …], …
+        if (Regex.IsMatch(code, @"\b(class|struct|union|enum)\s+\w+\s*\["))
+            return false;
+        // Constrained generic ops: op max[T: Ord[T]] … (not arr[dyn[T: …]] in a type position)
+        if (Regex.IsMatch(code, @"\bop\b(?:\s+\w+){0,3}\s*\[[^\]]*:\s*"))
+            return false;
+        // Comparison as operator name: op a < b
+        if (Regex.IsMatch(code, @"\bop\s+\w+\s*<\s*"))
+            return false;
+        // Multiply as operator name without a type signature: op a * u { / ;
+        if (Regex.IsMatch(code, @"\bop\s+\w+\s*\*\s+\w+\s*[\{\;]"))
+            return false;
+        // Static-style ops only fail inside trait declarations today.
+        if (Regex.IsMatch(code, @"\btrait\b[\s\S]*\bop\s+\w+::"))
+            return false;
+        // Multi-constraint type params: [TNum, TVec: Add[TNum], Sub[TNum], …]
+        if (Regex.IsMatch(code, @"\[[^\]]*:\s*\w+\s*\[[^\]]*\]\s*,"))
+            return false;
+        // type aliases to dyn[…]
+        if (Regex.IsMatch(code, @"\btype\b[^=]*=\s*dyn\b"))
+            return false;
+
+        // Declaration-only snippets (get/set/struct/impl/…) are runnable even with no output.
         return DeclOrOutput().IsMatch(code);
     }
 }
