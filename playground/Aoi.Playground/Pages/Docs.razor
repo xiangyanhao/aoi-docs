@@ -1,0 +1,151 @@
+@page "/docs"
+@page "/docs/{*DocId}"
+@using System.Net
+@using Aoi.Playground.Components
+@using Aoi.Playground.Services
+@inject DocCatalog Catalog
+@inject NavigationManager Nav
+
+<PageTitle>@(_entry?.Title ?? "Aoi Docs")</PageTitle>
+
+<div class="shell shell-docs">
+    <SiteHeader Active="docs" Subtitle="语言设计文档 · 可运行示例" />
+
+    <div class="docs-workspace">
+        <aside class="docs-nav">
+            <h2>Contents</h2>
+            @if (_index is null)
+            {
+                <p class="docs-muted">Loading…</p>
+            }
+            else
+            {
+                @foreach (var chapter in _index.Chapters)
+                {
+                    <div class="docs-chapter">
+                        <div class="docs-chapter-title">@chapter.Title</div>
+                        <div class="docs-chapter-list">
+                            @foreach (var doc in chapter.Docs)
+                            {
+                                <a class="docs-link @(doc.Id == _activeId ? "active" : null)"
+                                   href="@DocHref(doc.Id)">@doc.Title</a>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </aside>
+
+        <article class="docs-article panel">
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="docs-body">
+                    <p class="docs-muted">@_error</p>
+                </div>
+            }
+            else if (_blocks is null)
+            {
+                <div class="docs-body">
+                    <p class="docs-muted">Loading document…</p>
+                </div>
+            }
+            else
+            {
+                <div class="docs-body">
+                    @foreach (var block in _blocks)
+                    {
+                        @if (block is DocHtmlBlock html)
+                        {
+                            @((MarkupString)html.Html)
+                        }
+                        else if (block is DocAoiBlock aoi)
+                        {
+                            <AoiSnippet Code="@aoi.Code" />
+                        }
+                        else if (block is DocCodeBlock code)
+                        {
+                            <div class="doc-snippet doc-snippet-plain">
+                                <div class="doc-snippet-bar">
+                                    <span class="doc-snippet-lang">@(string.IsNullOrEmpty(code.Language) ? "code" : code.Language)</span>
+                                </div>
+                                <pre class="doc-code"><code>@(code.Code)</code></pre>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </article>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? DocId { get; set; }
+
+    private DocIndex? _index;
+    private string? _activeId;
+    private DocEntry? _entry;
+    private IReadOnlyList<DocBlock>? _blocks;
+    private string? _error;
+    private string? _loadedFor;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _index = await Catalog.GetIndexAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load docs index: {ex.Message}";
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_index is null)
+        {
+            try { _index = await Catalog.GetIndexAsync(); }
+            catch { return; }
+        }
+
+        var id = string.IsNullOrWhiteSpace(DocId)
+            ? _index.Docs.FirstOrDefault()?.Id
+            : WebUtility.UrlDecode(DocId).Trim().TrimEnd('/');
+
+        if (string.IsNullOrEmpty(id))
+        {
+            _error = "No documents found. Rebuild the playground to sync chapter docs.";
+            return;
+        }
+
+        if (id == _loadedFor && _blocks != null) return;
+
+        _activeId = id;
+        _entry = await Catalog.FindAsync(id);
+        if (_entry is null)
+        {
+            _error = $"Document not found: {id}";
+            _blocks = null;
+            _loadedFor = id;
+            return;
+        }
+
+        try
+        {
+            var md = await Catalog.GetMarkdownAsync(_entry.Id);
+            _blocks = DocMarkdown.Parse(md ?? "");
+            _error = null;
+            _loadedFor = _entry.Id;
+            _activeId = _entry.Id;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load {_entry.Path}: {ex.Message}";
+            _blocks = null;
+            _loadedFor = id;
+        }
+    }
+
+    private string DocHref(string id) =>
+        Nav.ToAbsoluteUri(Nav.BaseUri).GetLeftPart(UriPartial.Path).TrimEnd('/') + "/docs/" + id;
+}

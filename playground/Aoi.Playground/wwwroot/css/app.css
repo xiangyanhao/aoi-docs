@@ -40,6 +40,10 @@
   --tok-punct: #9eb6d4;
   --tok-ident: #e8eef8;
   --tok-plain: #c5d3e6;
+  --active-line: rgba(110, 168, 255, 0.10);
+  --gutter-fg: #6f849e;
+  --gutter-active: #f0b429;
+  --gutter-bg: rgba(0, 0, 0, 0.18);
 
   --font-brand: "Bricolage Grotesque", "Segoe UI", sans-serif;
   --font-ui: "Source Sans 3", "Segoe UI", sans-serif;
@@ -86,6 +90,10 @@
   --tok-punct: #5b7190;
   --tok-ident: #142033;
   --tok-plain: #334155;
+  --active-line: rgba(37, 99, 168, 0.10);
+  --gutter-fg: #7a8ca3;
+  --gutter-active: #b7791f;
+  --gutter-bg: rgba(20, 40, 70, 0.04);
 }
 
 *,
@@ -192,6 +200,40 @@ textarea {
   display: flex;
   align-items: center;
   gap: 0.9rem;
+}
+
+.brand-link {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.nav-links {
+  display: inline-flex;
+  gap: 0.35rem;
+  margin-right: 0.25rem;
+}
+
+.nav-link {
+  color: var(--mist);
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.92rem;
+}
+
+.nav-link:hover {
+  color: var(--paper);
+  background: var(--hover-bg);
+}
+
+.nav-link.active {
+  color: var(--paper);
+  border-color: rgba(240, 180, 41, 0.35);
+  background: var(--active-bg);
 }
 
 .brand-mark {
@@ -347,9 +389,54 @@ textarea {
 
 .stage {
   display: grid;
-  grid-template-rows: minmax(280px, 1fr) minmax(180px, 0.7fr);
-  gap: 1rem;
+  grid-template-rows: minmax(200px, 0.58fr) 10px minmax(140px, 0.42fr);
+  gap: 0;
   min-height: 70vh;
+}
+
+.split-handle {
+  height: 10px;
+  margin: 0.35rem 0;
+  cursor: row-resize;
+  border-radius: 999px;
+  background:
+    linear-gradient(90deg, transparent, rgba(158, 182, 212, 0.35), transparent);
+  position: relative;
+  touch-action: none;
+}
+
+.split-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+  background: rgba(240, 180, 41, 0.55);
+}
+
+body.is-resizing {
+  cursor: row-resize;
+  user-select: none;
+}
+
+body.is-resizing iframe,
+body.is-resizing textarea {
+  pointer-events: none;
+}
+
+.samples-docs-link {
+  display: inline-block;
+  margin-top: 0.9rem;
+  color: var(--sky);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.samples-docs-link:hover {
+  text-decoration: underline;
 }
 
 .panel {
@@ -395,6 +482,55 @@ textarea {
   flex: 1;
   min-height: 240px;
   overflow: hidden;
+  display: grid;
+  grid-template-columns: 3.2rem 1fr;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .code-editor {
+  background: rgba(20, 40, 70, 0.03);
+}
+
+.code-gutter {
+  overflow: hidden;
+  background: var(--gutter-bg);
+  border-right: 1px solid var(--line);
+  padding: 1rem 0.35rem 1rem 0;
+  font-family: var(--font-mono);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  text-align: right;
+  color: var(--gutter-fg);
+  user-select: none;
+  z-index: 2;
+}
+
+.code-gutter-line {
+  padding-right: 0.45rem;
+  min-height: 1.55em;
+}
+
+.code-gutter-line.is-active {
+  color: var(--gutter-active);
+  font-weight: 600;
+}
+
+.code-surface {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.code-active-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1rem;
+  height: 1.55em;
+  background: var(--active-line);
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
 }
 
 .code-highlight,
@@ -419,7 +555,7 @@ textarea {
   pointer-events: none;
   color: var(--tok-plain);
   background: transparent;
-  z-index: 0;
+  z-index: 1;
 }
 
 .code-highlight code {
@@ -438,7 +574,7 @@ textarea {
   background: transparent;
   color: transparent;
   caret-color: var(--editor-fg);
-  z-index: 1;
+  z-index: 2;
   -webkit-text-fill-color: transparent;
 }
 
@@ -554,9 +690,242 @@ textarea {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* ---- Docs ---- */
+
+.shell-docs {
+  width: min(1280px, calc(100% - 2rem));
+}
+
+.docs-workspace {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 1rem;
+  min-height: 70vh;
+}
+
+.docs-nav {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  align-self: start;
+  max-height: calc(100vh - 7rem);
+  overflow: auto;
+  position: sticky;
+  top: 1rem;
+}
+
+.docs-nav h2 {
+  margin: 0 0 0.7rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+.docs-chapter + .docs-chapter {
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.docs-chapter-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin-bottom: 0.35rem;
+}
+
+.docs-chapter-list {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.docs-link {
+  display: block;
+  color: var(--mist);
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.docs-link:hover {
+  color: var(--paper);
+  background: var(--hover-bg);
+}
+
+.docs-link.active {
+  color: var(--paper);
+  background: var(--active-bg);
+}
+
+.docs-article {
+  min-height: 60vh;
+}
+
+.docs-body {
+  padding: 1.25rem 1.4rem 2rem;
+  line-height: 1.65;
+  overflow: auto;
+}
+
+.docs-body > :first-child {
+  margin-top: 0;
+}
+
+.docs-body h1,
+.docs-body h2,
+.docs-body h3 {
+  font-family: var(--font-brand);
+  line-height: 1.25;
+  margin: 1.4rem 0 0.7rem;
+}
+
+.docs-body h1 { font-size: 1.85rem; }
+.docs-body h2 { font-size: 1.35rem; }
+.docs-body h3 { font-size: 1.12rem; }
+
+.docs-body p,
+.docs-body li {
+  color: color-mix(in srgb, var(--paper) 88%, var(--mist));
+}
+
+.docs-body code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: rgba(110, 168, 255, 0.1);
+  padding: 0.08em 0.35em;
+  border-radius: 6px;
+}
+
+.docs-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+
+.docs-body th,
+.docs-body td {
+  border: 1px solid var(--line);
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+}
+
+.docs-body th {
+  background: var(--panel-head-bg);
+}
+
+.docs-muted {
+  color: var(--mist);
+}
+
+.doc-snippet {
+  margin: 1rem 0 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+[data-theme="light"] .doc-snippet {
+  background: rgba(20, 40, 70, 0.03);
+}
+
+.doc-snippet-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-head-bg);
+}
+
+.doc-snippet-lang {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+.doc-snippet-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.btn-tiny {
+  padding: 0.28rem 0.7rem;
+  font-size: 0.82rem;
+  border-radius: 999px;
+}
+
+.doc-code {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--tok-plain);
+}
+
+.doc-code code {
+  font: inherit;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.doc-snippet-out {
+  border-top: 1px solid var(--line);
+  background: rgba(109, 222, 168, 0.06);
+}
+
+.doc-snippet-out.is-error {
+  background: rgba(255, 122, 122, 0.08);
+}
+
+.doc-snippet-out-label {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.4rem 0.9rem 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mist);
+}
+
+.doc-snippet-out pre {
+  margin: 0;
+  padding: 0.45rem 0.9rem 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--output-fg);
+}
+
+.doc-snippet-out.is-error pre {
+  color: var(--danger);
+}
+
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: 1fr;
+  }
+
+  .docs-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-nav {
+    position: static;
+    max-height: 220px;
   }
 
   .topbar {
@@ -570,7 +939,6 @@ textarea {
 
   .stage {
     min-height: unset;
-    grid-template-rows: auto auto;
   }
 
   .code-editor {

@@ -1,19 +1,32 @@
 @using Aoi.Playground.Services
 @inject IJSRuntime Js
+@implements IAsyncDisposable
 
 <div class="code-editor" @ref="_root">
-    <pre class="code-highlight" @ref="_highlight" aria-hidden="true"><code>@((MarkupString)_html)</code></pre>
-    <textarea class="code-input"
-              @ref="_textarea"
-              value="@Value"
-              @oninput="OnInput"
-              @onscroll="OnScroll"
-              @onkeydown="OnKeyDown"
-              spellcheck="false"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              aria-label="@AriaLabel"></textarea>
+    <div class="code-gutter" @ref="_gutter" aria-hidden="true">
+        @for (int i = 1; i <= _lineCount; i++)
+        {
+            <div class="code-gutter-line @(i == _activeLine ? "is-active" : null)">@i</div>
+        }
+    </div>
+    <div class="code-surface">
+        <div class="code-active-line" @ref="_activeLineEl" aria-hidden="true"></div>
+        <pre class="code-highlight" @ref="_highlight" aria-hidden="true"><code>@((MarkupString)_html)</code></pre>
+        <textarea class="code-input"
+                  @ref="_textarea"
+                  value="@Value"
+                  @oninput="OnInput"
+                  @onscroll="OnScroll"
+                  @onkeydown="OnKeyDown"
+                  @onclick="OnCaretMaybeChanged"
+                  @onkeyup="OnCaretMaybeChanged"
+                  @onselect="OnCaretMaybeChanged"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  aria-label="@AriaLabel"></textarea>
+    </div>
 </div>
 
 @code {
@@ -25,45 +38,100 @@
     private ElementReference _root;
     private ElementReference _textarea;
     private ElementReference _highlight;
+    private ElementReference _gutter;
+    private ElementReference _activeLineEl;
     private string _html = "\n";
+    private int _lineCount = 1;
+    private int _activeLine = 1;
+    private DotNetObjectReference<CodeEditor>? _self;
+    private bool _bound;
 
     protected override void OnParametersSet()
     {
         _html = AoiHighlighter.ToHtml(Value);
+        _lineCount = CountLines(Value);
+        if (_activeLine > _lineCount) _activeLine = _lineCount;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_bound) return;
+        _bound = true;
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            await Js.InvokeVoidAsync("aoiPlayground.bindEditor", _textarea, _highlight, _gutter, _activeLineEl, _self);
+            await RefreshActiveLineAsync();
+        }
+        catch { /* JS may not be ready on first paint */ }
     }
 
     private async Task OnInput(ChangeEventArgs e)
     {
         var next = e.Value?.ToString() ?? "";
         await ValueChanged.InvokeAsync(next);
-        // Highlight refreshes via Parameter set from parent.
+        await RefreshActiveLineAsync();
         await SyncScroll();
     }
 
-    private async Task OnScroll()
-    {
-        await SyncScroll();
-    }
+    private async Task OnScroll() => await SyncScroll();
+
+    private async Task OnCaretMaybeChanged(EventArgs _) => await RefreshActiveLineAsync();
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey))
             await OnRunRequested.InvokeAsync();
-        else if (e.Key == "Tab")
+    }
+
+    private async Task RefreshActiveLineAsync()
+    {
+        try
         {
-            // Let browser handle tab normally for accessibility; no preventDefault in Blazor easily.
+            var line = await Js.InvokeAsync<int>("aoiPlayground.getCursorLine", _textarea);
+            if (line < 1) line = 1;
+            if (line != _activeLine)
+            {
+                _activeLine = line;
+                StateHasChanged();
+            }
+            await Js.InvokeVoidAsync("aoiPlayground.updateActiveLine", _textarea, _activeLineEl, _activeLine);
         }
+        catch { /* ignore */ }
     }
 
     private async Task SyncScroll()
     {
         try
         {
-            await Js.InvokeVoidAsync("aoiPlayground.syncEditorScroll", _textarea, _highlight);
+            await Js.InvokeVoidAsync("aoiPlayground.syncEditorScroll", _textarea, _highlight, _gutter, _activeLineEl, _activeLine);
         }
-        catch
+        catch { /* ignore during first render */ }
+    }
+
+    [JSInvokable]
+    public void OnEditorScrollFromJs()
+    {
+        // reserved for future bidirectional sync
+    }
+
+    private static int CountLines(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return 1;
+        int n = 1;
+        foreach (var c in value)
+            if (c == '\n') n++;
+        return n;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
         {
-            // Ignore during first render before JS loads.
+            if (_bound)
+                await Js.InvokeVoidAsync("aoiPlayground.unbindEditor", _textarea);
         }
+        catch { /* ignore */ }
+        _self?.Dispose();
     }
 }

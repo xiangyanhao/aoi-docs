@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Markdig" Version="0.41.1" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.34" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="8.0.34" PrivateAssets="all" />
   </ItemGroup>
@@ -19,5 +20,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\interpreter\Aoi.Core\Aoi.Core.csproj" />
   </ItemGroup>
+
+  <!-- Keep language chapters in sync with repo docs on every build/publish. -->
+  <Target Name="SyncAoiDocs" BeforeTargets="BeforeBuild;BeforePublish">
+    <Exec Command="python3 &quot;$(MSBuildThisFileDirectory)..\tools\sync-docs.py&quot;"
+          WorkingDirectory="$(MSBuildThisFileDirectory)..\.."
+          ConsoleToMsBuild="true" />
+  </Target>
 
 </Project>
