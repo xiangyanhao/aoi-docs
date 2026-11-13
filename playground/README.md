@@ -6,7 +6,7 @@
 
 运行防护：调用深度上限（512）与求值步数上限（200 万），递归栈溢出、死循环、除零等会返回可读错误而不是卡死页面。
 
-文档：`1-` / `2-` / `3-` / `4-` 章节会在每次 build/publish 时通过 `playground/tools/sync-docs.py` 同步进 `wwwroot/doc-content/`（刻意不用 `docs/`，以免和 Blazor 路由 `/docs` 在 GitHub Pages 上冲突）；` ```aoi ` 代码块带高亮。可运行示例提供 **Run** / **Edit**（仅声明、无输出也可以）；语法示意（省略号、占位符、解释器尚不能可靠解析的泛型约束等）只展示为 syntax，避免点了 Run 却报错。
+文档：`1-` / `2-` / `3-` / `4-` 章节会在每次 build/publish 时通过 `playground/tools/sync-docs.py` 同步进 `wwwroot/doc-content/`（刻意不用 `docs/`，以免和 Blazor 路由 `/docs` 在 GitHub Pages 上冲突）；` ```aoi ` 代码块带高亮。可运行示例提供 **Run** / **Edit**（仅声明、无输出也可以，含第 4 章泛型 / 特征 / `dyn`）；语法示意（省略号、占位符、不完整片段）只展示为 syntax，避免点了 Run 却报错。
 
 本地开发：
 

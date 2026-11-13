@@ -27,30 +27,8 @@ public static partial class DocSnippetKind
             && !Regex.IsMatch(code, @"\bop\b[\s\S]*\bconvert\b"))
             return false;
 
-        // Forms the interpreter still cannot parse reliably — keep as syntax.
-        // Generic type decls: class Dictionary[TKey, TValue], struct Vector[T: …], …
-        if (Regex.IsMatch(code, @"\b(class|struct|union|enum)\s+\w+\s*\["))
-            return false;
-        // Constrained generic ops: op max[T: Ord[T]] … (not arr[dyn[T: …]] in a type position)
-        if (Regex.IsMatch(code, @"\bop\b(?:\s+\w+){0,3}\s*\[[^\]]*:\s*"))
-            return false;
-        // Comparison as operator name: op a < b
-        if (Regex.IsMatch(code, @"\bop\s+\w+\s*<\s*"))
-            return false;
-        // Multiply as operator name without a type signature: op a * u { / ;
-        if (Regex.IsMatch(code, @"\bop\s+\w+\s*\*\s+\w+\s*[\{\;]"))
-            return false;
-        // Static-style ops only fail inside trait declarations today.
-        if (Regex.IsMatch(code, @"\btrait\b[\s\S]*\bop\s+\w+::"))
-            return false;
-        // Multi-constraint type params: [TNum, TVec: Add[TNum], Sub[TNum], …]
-        if (Regex.IsMatch(code, @"\[[^\]]*:\s*\w+\s*\[[^\]]*\]\s*,"))
-            return false;
-        // type aliases to dyn[…]
-        if (Regex.IsMatch(code, @"\btype\b[^=]*=\s*dyn\b"))
-            return false;
-
-        // Declaration-only snippets (get/set/struct/impl/…) are runnable even with no output.
+        // After the typed-semantics refactor, generics / traits / dyn are executable when
+        // the fence is self-contained. Declaration-only snippets may have no output.
         return DeclOrOutput().IsMatch(code);
     }
 }
