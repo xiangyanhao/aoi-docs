@@ -45,6 +45,7 @@
     private int _activeLine = 1;
     private DotNetObjectReference<CodeEditor>? _self;
     private bool _bound;
+    private string? _lastSyncedValue;
 
     protected override void OnParametersSet()
     {
@@ -55,13 +56,25 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_bound) return;
-        _bound = true;
-        _self = DotNetObjectReference.Create(this);
         try
         {
-            await Js.InvokeVoidAsync("aoiPlayground.bindEditor", _textarea, _highlight, _gutter, _activeLineEl, _self);
-            await RefreshActiveLineAsync();
+            if (!_bound)
+            {
+                _bound = true;
+                _self = DotNetObjectReference.Create(this);
+                await Js.InvokeVoidAsync("aoiPlayground.bindEditor", _textarea, _highlight, _gutter, _activeLineEl, _self);
+            }
+
+            // After Docs ↔ Playground navigation, ensure the DOM textarea matches Value.
+            if (!string.Equals(_lastSyncedValue, Value, StringComparison.Ordinal))
+            {
+                _lastSyncedValue = Value;
+                await Js.InvokeVoidAsync("aoiPlayground.setEditorValue", _textarea, Value);
+                await Js.InvokeVoidAsync("aoiPlayground.syncEditorScroll", _textarea, _highlight, _gutter, _activeLineEl, _activeLine);
+            }
+
+            if (firstRender)
+                await RefreshActiveLineAsync();
         }
         catch { /* JS may not be ready on first paint */ }
     }

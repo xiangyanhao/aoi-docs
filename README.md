@@ -18,7 +18,7 @@ Aoi 是一个静态强类型的、运行在 .NET 上的轻量解释型语言。�
 - 源码与本地运行：[playground/README.md](playground/README.md)
 - 合并到 `master` 后由 Actions 自动发布；首次需在仓库 Settings → Pages 将 Source 设为 **GitHub Actions**
 - 预计地址：`https://xiangyanhao.github.io/aoi-docs/`
-- 文档入口：`/docs`（同步仓库内 `1-`/`2-`/`3-`/`4-` 章节；`aoi` 代码块可即时运行）
+- 文档入口：`/docs`（章节内容同步到 `wwwroot/doc-content/`，避免与路由冲突；`aoi` 代码块可即时运行）
 
 ## 快速开始
 

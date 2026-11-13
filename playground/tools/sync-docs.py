@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Copy chapter docs (1-/2-/3-/4-) into playground wwwroot/docs and write index.json."""
+"""Copy chapter docs (1-/2-/3-/4-) into playground wwwroot/doc-content and write index.json.
+
+Uses doc-content/ (not docs/) so the static files do not collide with the Blazor
+/docs route on GitHub Pages — otherwise opening /docs in a new tab serves index.json.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = Path(__file__).resolve().parents[1] / "Aoi.Playground" / "wwwroot" / "docs"
+WWWROOT = Path(__file__).resolve().parents[1] / "Aoi.Playground" / "wwwroot"
+OUT = WWWROOT / "doc-content"
+LEGACY = WWWROOT / "docs"
 
 
 def first_heading(text: str) -> str | None:
@@ -37,6 +43,9 @@ def doc_sort_key(stem: str) -> tuple:
 
 
 def main() -> int:
+    # Drop the old path that shadowed the /docs SPA route.
+    if LEGACY.exists():
+        shutil.rmtree(LEGACY)
     if OUT.exists():
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)

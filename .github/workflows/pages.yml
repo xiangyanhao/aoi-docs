@@ -43,13 +43,20 @@ jobs:
             BASE_HREF="/"
           fi
           echo "Using base href: ${BASE_HREF}"
-          sed -i "s|<base href=\"/\" />|<base href=\"${BASE_HREF}\" />|" playground/Aoi.Playground/wwwroot/index.html
+          sed -i "s|<base href=\"/\" />|<base href=\"${BASE_HREF}\" />|" \
+            playground/Aoi.Playground/wwwroot/index.html \
+            playground/Aoi.Playground/wwwroot/404.html
+          # Keep 404 meta-refresh pointed at the site base (not a relative ./).
+          sed -i "s|content=\"0;URL='/'\"|content=\"0;URL='${BASE_HREF}'\"|" \
+            playground/Aoi.Playground/wwwroot/404.html
           dotnet publish playground/Aoi.Playground/Aoi.Playground.csproj -c Release -o publish \
             -p:StaticWebAssetFingerprintingEnabled=false \
             -p:StaticWebAssetsFingerprintContent=false
 
           echo "Published index.html:"
           cat publish/wwwroot/index.html
+          echo "Published 404.html:"
+          cat publish/wwwroot/404.html
           echo "Blazor boot scripts:"
           ls -la publish/wwwroot/_framework/blazor.webassembly* || true
 
@@ -63,10 +70,19 @@ jobs:
             echo "::error::index.html does not reference _framework/blazor.webassembly.js"
             exit 1
           fi
+          if ! test -d publish/wwwroot/doc-content; then
+            echo "::error::Expected publish/wwwroot/doc-content (synced chapter docs)"
+            ls publish/wwwroot | head -50
+            exit 1
+          fi
+          if test -d publish/wwwroot/docs; then
+            echo "::error::publish/wwwroot/docs must not exist (shadows Blazor /docs route)"
+            exit 1
+          fi
 
           # Ensure Pages ignores Jekyll processing
           touch publish/wwwroot/.nojekyll
-          # Keep a 404 fallback for client routes
+          # Keep a 404 fallback for client routes (base href already rewritten above)
           cp playground/Aoi.Playground/wwwroot/404.html publish/wwwroot/404.html
 
       - name: Upload Pages artifact

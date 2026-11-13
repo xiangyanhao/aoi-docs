@@ -8,6 +8,22 @@
     <title>Aoi Playground</title>
     <!-- BASE_HREF: replaced in CI for GitHub Pages project sites -->
     <base href="/" />
+    <script>
+      // Restore deep links saved by 404.html (GitHub Pages SPA fallback).
+      (function () {
+        try {
+          var redirect = sessionStorage.getItem('aoi:redirect');
+          if (!redirect) return;
+          sessionStorage.removeItem('aoi:redirect');
+          var url = new URL(redirect, window.location.href);
+          if (url.origin !== window.location.origin) return;
+          var base = (document.querySelector('base')?.getAttribute('href') || '/');
+          var basePath = base.endsWith('/') ? base.slice(0, -1) : base;
+          if (basePath && url.pathname !== basePath && url.pathname.indexOf(basePath + '/') !== 0) return;
+          history.replaceState(null, '', url.pathname + url.search + url.hash);
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />

@@ -30,6 +30,14 @@ window.aoiPlayground = {
     this._editors.delete(textarea);
   },
 
+  /** Keep the transparent textarea DOM value in sync after SPA remounts. */
+  setEditorValue(textarea, value) {
+    if (!textarea) return;
+    const next = value ?? '';
+    if (textarea.value !== next) textarea.value = next;
+  },
+
+
   getCursorLine(textarea) {
     if (!textarea) return 1;
     const value = textarea.value || '';

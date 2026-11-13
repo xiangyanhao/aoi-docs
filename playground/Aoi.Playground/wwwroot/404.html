@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <title>Aoi Playground</title>
+  <!-- BASE_HREF: replaced in CI for GitHub Pages project sites -->
+  <base href="/" />
   <script>
-    // GitHub Pages SPA fallback: send unknown paths back to index.
-    sessionStorage.redirect = location.href;
+    // GitHub Pages SPA fallback: remember the deep link, then load index at the site base.
+    sessionStorage.setItem('aoi:redirect', location.href);
     const base = document.querySelector('base')?.getAttribute('href') || '/';
     location.replace(base);
   </script>
-  <meta http-equiv="refresh" content="0;URL='./'" />
+  <meta http-equiv="refresh" content="0;URL='/'" />
 </head>
 <body></body>
 </html>

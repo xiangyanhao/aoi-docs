@@ -64,7 +64,7 @@ public sealed class DocCatalog
     {
         var entry = await FindAsync(docId);
         if (entry == null) return null;
-        return await _http.GetStringAsync($"docs/{entry.Path}");
+        return await _http.GetStringAsync($"doc-content/{entry.Path}");
     }
 
     public async Task<DocEntry?> FindAsync(string docId)
@@ -76,7 +76,7 @@ public sealed class DocCatalog
 
     private async Task<DocIndex> LoadAsync()
     {
-        var index = await _http.GetFromJsonAsync<DocIndex>("docs/index.json", JsonOptions)
+        var index = await _http.GetFromJsonAsync<DocIndex>("doc-content/index.json", JsonOptions)
                     ?? new DocIndex();
         _index = index;
         return index;
