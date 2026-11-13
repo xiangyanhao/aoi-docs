@@ -184,7 +184,8 @@ textarea {
 .shell {
   width: min(1200px, calc(100% - 2rem));
   margin: 0 auto;
-  padding: 1.5rem 0 2.5rem;
+  /* Extra bottom space so fixed music player does not cover content */
+  padding: 1.5rem 0 7.5rem;
   animation: rise-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
@@ -618,10 +619,34 @@ body.is-resizing textarea {
   color: var(--danger);
 }
 
+.music-player {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 35;
+  width: 330px;
+  height: 86px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+  animation: rise-in 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation-delay: 0.25s;
+}
+
+.music-player iframe {
+  display: block;
+  width: 330px;
+  height: 86px;
+  border: 0;
+}
+
 .toast {
   position: fixed;
   right: 1rem;
   bottom: 1rem;
+  z-index: 50;
   background: var(--toast-bg);
   border: 1px solid rgba(240, 180, 41, 0.35);
   color: var(--paper);
@@ -962,5 +987,17 @@ body.is-resizing textarea {
 
   .sample-list {
     grid-template-columns: 1fr;
+  }
+
+  .music-player {
+    left: 0.55rem;
+    right: 0.55rem;
+    bottom: 0.55rem;
+    width: auto;
+    max-width: 330px;
+  }
+
+  .music-player iframe {
+    width: 100%;
   }
 }
