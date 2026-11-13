@@ -1,9 +1,194 @@
-<div class="music-player" aria-label="背景音乐">
-    <iframe title="网易云音乐"
-            frameborder="0"
-            allow="encrypted-media"
-            loading="lazy"
-            width="330"
-            height="86"
-            src="https://music.163.com/outchain/player?type=2&id=27715285&auto=0&height=66"></iframe>
+@inject IJSRuntime Js
+@implements IAsyncDisposable
+
+<div class="music-player @(_playing ? "is-playing" : null) @(_error != null ? "is-error" : null)"
+     aria-label="背景音乐">
+    <img class="music-cover" src="@CoverUrl" alt="" width="66" height="66" draggable="false" />
+    <div class="music-body">
+        <div class="music-text">
+            <div class="music-title" title="@Title">@Title</div>
+            <div class="music-artist" title="@Artist">@Artist</div>
+        </div>
+        <div class="music-controls">
+            <button class="music-toggle" type="button"
+                    title="@(_playing ? "暂停" : "播放")"
+                    aria-label="@(_playing ? "暂停" : "播放")"
+                    disabled="@_busy"
+                    @onclick="ToggleAsync">
+                @if (_playing)
+                {
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+                }
+            </button>
+            <button class="music-bar" type="button" title="进度"
+                    aria-label="播放进度"
+                    @onclick="SeekAsync">
+                <span class="music-bar-track" aria-hidden="true"></span>
+                <span class="music-bar-played" style="width: @(_progress * 100)%" aria-hidden="true"></span>
+            </button>
+            <a class="music-open"
+               href="https://music.163.com/#/song?id=@SongId"
+               target="_blank"
+               rel="noopener noreferrer"
+               title="在网易云打开">云</a>
+        </div>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="music-error">@_error</div>
+        }
+    </div>
+    <audio @ref="_audio"
+           preload="metadata"
+           src="@AudioUrl"></audio>
 </div>
+
+@code {
+    // Same track as the previous NetEase outchain embed (id=27715285).
+    private const string SongId = "27715285";
+    private const string Title = "星のメリーゴーランド";
+    private const string Artist = "多田葵";
+    // Official outchain iframe is broken on third-party hosts; stream via a Meting-compatible proxy.
+    private const string AudioUrl = "https://api.injahow.cn/meting/?server=netease&type=url&id=" + SongId;
+    private const string CoverUrl = "https://p3.music.126.net/j-Oph-9o8HPxk9V09L6p2A==/1290826651047789.jpg?param=90y90";
+
+    private ElementReference _audio;
+    private bool _playing;
+    private bool _busy;
+    private bool _bound;
+    private double _progress;
+    private string? _error;
+    private DotNetObjectReference<MusicPlayer>? _self;
+    private CancellationTokenSource? _pollCts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_bound) return;
+        _bound = true;
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            await Js.InvokeVoidAsync("aoiPlayground.bindAudio", _audio, _self);
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (_playing)
+            {
+                await Js.InvokeVoidAsync("aoiPlayground.pauseAudio", _audio);
+                _playing = false;
+                StopPolling();
+            }
+            else
+            {
+                await Js.InvokeVoidAsync("aoiPlayground.playAudio", _audio);
+                _playing = true;
+                StartPolling();
+            }
+        }
+        catch (Exception ex)
+        {
+            _playing = false;
+            StopPolling();
+            _error = "无法播放，请点右侧「云」打开网易云";
+            Console.WriteLine("MusicPlayer: " + ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task SeekAsync(MouseEventArgs e)
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("aoiPlayground.seekAudioAtClientX", _audio, e.ClientX);
+            _progress = await Js.InvokeAsync<double>("aoiPlayground.getAudioProgress", _audio);
+        }
+        catch { /* ignore */ }
+    }
+
+    [JSInvokable]
+    public void OnAudioEnded()
+    {
+        _playing = false;
+        _progress = 0;
+        StopPolling();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnAudioPause()
+    {
+        _playing = false;
+        StopPolling();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnAudioPlay()
+    {
+        _playing = true;
+        _error = null;
+        StartPolling();
+        StateHasChanged();
+    }
+
+    private void StartPolling()
+    {
+        StopPolling();
+        _pollCts = new CancellationTokenSource();
+        _ = PollProgressAsync(_pollCts.Token);
+    }
+
+    private void StopPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts = null;
+    }
+
+    private async Task PollProgressAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                await Task.Delay(250, token);
+                try
+                {
+                    var p = await Js.InvokeAsync<double>("aoiPlayground.getAudioProgress", _audio);
+                    if (Math.Abs(p - _progress) > 0.002)
+                    {
+                        _progress = p;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                catch { /* ignore */ }
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        StopPolling();
+        try
+        {
+            if (_bound)
+                await Js.InvokeVoidAsync("aoiPlayground.unbindAudio", _audio);
+        }
+        catch { /* ignore */ }
+        _self?.Dispose();
+    }
+}

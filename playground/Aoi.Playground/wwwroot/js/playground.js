@@ -37,6 +37,57 @@ window.aoiPlayground = {
     if (textarea.value !== next) textarea.value = next;
   },
 
+  _audioHandlers: new WeakMap(),
+
+  bindAudio(audio, dotnetRef) {
+    if (!audio) return;
+    this.unbindAudio(audio);
+    const onEnded = () => dotnetRef.invokeMethodAsync('OnAudioEnded');
+    const onPause = () => {
+      if (!audio.ended) dotnetRef.invokeMethodAsync('OnAudioPause');
+    };
+    const onPlay = () => dotnetRef.invokeMethodAsync('OnAudioPlay');
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('play', onPlay);
+    this._audioHandlers.set(audio, { onEnded, onPause, onPlay });
+  },
+
+  unbindAudio(audio) {
+    const h = this._audioHandlers.get(audio);
+    if (!h || !audio) return;
+    audio.removeEventListener('ended', h.onEnded);
+    audio.removeEventListener('pause', h.onPause);
+    audio.removeEventListener('play', h.onPlay);
+    this._audioHandlers.delete(audio);
+  },
+
+  async playAudio(audio) {
+    if (!audio) throw new Error('audio missing');
+    await audio.play();
+  },
+
+  pauseAudio(audio) {
+    if (!audio) return;
+    audio.pause();
+  },
+
+  getAudioProgress(audio) {
+    if (!audio || !audio.duration || !Number.isFinite(audio.duration) || audio.duration <= 0) return 0;
+    return Math.min(1, Math.max(0, audio.currentTime / audio.duration));
+  },
+
+  seekAudioAtClientX(audio, clientX) {
+    if (!audio || !audio.duration || !Number.isFinite(audio.duration)) return;
+    const bar = audio.parentElement?.querySelector('.music-bar');
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * audio.duration;
+  },
+
+
 
   getCursorLine(textarea) {
     if (!textarea) return 1;
