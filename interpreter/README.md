@@ -63,6 +63,7 @@ dotnet run --project Aoi.Interpreter -- -i
 - `try` / `catch` / `throw`（基础）
 - `impl` 中的运算符定义（特征系统为简化实现）
 - 内置 `printLine` / `print` / `toStr`
+- 运行时防护：调用深度上限（默认 1 024）、求值步数上限（默认 5 000 万），并用 `EnsureSufficientExecutionStack` 把递归栈溢出转成可捕获错误；playground 使用更紧的限额（深度 512 / 步数 200 万）
 
 **尚未完整实现或仅部分支持：**
 
