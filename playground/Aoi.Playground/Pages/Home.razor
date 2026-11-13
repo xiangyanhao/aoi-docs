@@ -37,7 +37,16 @@
             <section class="panel panel-source">
                 <div class="panel-head">
                     <h2>Source</h2>
-                    <span class="meta">Ctrl/⌘ + Enter · drag handle to resize</span>
+                    <div class="panel-head-actions">
+                        <span class="meta">Ctrl/⌘ + Enter</span>
+                        <button class="btn btn-primary btn-run"
+                                type="button"
+                                disabled="@_running"
+                                title="Run (Ctrl/⌘ + Enter)"
+                                @onclick="RunAsync">
+                            @(_running ? "Running…" : "Run")
+                        </button>
+                    </div>
                 </div>
                 <CodeEditor Value="@State.Source"
                             ValueChanged="OnSourceChanged"

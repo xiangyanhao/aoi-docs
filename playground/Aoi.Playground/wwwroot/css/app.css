@@ -470,6 +470,20 @@ body.is-resizing textarea {
   color: var(--mist);
 }
 
+.panel-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.btn-run {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
 .meta {
   color: var(--mist);
   font-family: var(--font-mono);
