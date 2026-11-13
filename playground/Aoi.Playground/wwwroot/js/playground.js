@@ -87,6 +87,146 @@ window.aoiPlayground = {
     audio.currentTime = ratio * audio.duration;
   },
 
+  _dragHandlers: new WeakMap(),
+
+  /**
+   * Make the music player draggable across the viewport.
+   * Interactive controls (buttons / seek / links) are ignored as drag starts.
+   * Position is persisted in localStorage under `key`.
+   */
+  initDraggable(el, key) {
+    if (!el) return () => {};
+    this.disposeDraggable(el);
+    const storageKey = key || 'aoi-music-pos';
+    const margin = 8;
+
+    const clamp = (left, top) => {
+      const w = el.offsetWidth || 330;
+      const h = el.offsetHeight || 86;
+      const maxL = Math.max(margin, window.innerWidth - w - margin);
+      const maxT = Math.max(margin, window.innerHeight - h - margin);
+      return {
+        left: Math.min(maxL, Math.max(margin, left)),
+        top: Math.min(maxT, Math.max(margin, top)),
+      };
+    };
+
+    const apply = (left, top, persist) => {
+      const p = clamp(left, top);
+      el.style.left = p.left + 'px';
+      el.style.top = p.top + 'px';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      el.classList.add('is-placed');
+      if (persist) {
+        try { localStorage.setItem(storageKey, JSON.stringify(p)); } catch { /* ignore */ }
+      }
+      return p;
+    };
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+          apply(saved.left, saved.top, false);
+        }
+      }
+    } catch { /* ignore */ }
+
+    let dragging = false;
+    let moved = false;
+    let startX = 0;
+    let startY = 0;
+    let origL = 0;
+    let origT = 0;
+
+    const point = (ev) => {
+      const t = ev.touches ? ev.touches[0] : ev;
+      return { x: t.clientX, y: t.clientY };
+    };
+
+    const onMove = (ev) => {
+      if (!dragging) return;
+      const p = point(ev);
+      const dx = p.x - startX;
+      const dy = p.y - startY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      apply(origL + dx, origT + dy, false);
+      ev.preventDefault();
+    };
+
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      el.classList.remove('is-dragging');
+      document.body.classList.remove('is-music-dragging');
+      const rect = el.getBoundingClientRect();
+      apply(rect.left, rect.top, true);
+    };
+
+    const onDown = (ev) => {
+      if (ev.button != null && ev.button !== 0) return;
+      if (ev.target.closest('button, a, .music-bar, input, textarea, select')) return;
+      const p = point(ev);
+      const rect = el.getBoundingClientRect();
+      dragging = true;
+      moved = false;
+      startX = p.x;
+      startY = p.y;
+      origL = rect.left;
+      origT = rect.top;
+      el.classList.add('is-dragging');
+      document.body.classList.add('is-music-dragging');
+      // Switch from bottom anchoring to top/left on first drag.
+      apply(rect.left, rect.top, false);
+      ev.preventDefault();
+    };
+
+    const onClickCapture = (ev) => {
+      // After a real drag, swallow the click so controls under the cursor do not fire.
+      if (moved) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        moved = false;
+      }
+    };
+
+    const onResize = () => {
+      const rect = el.getBoundingClientRect();
+      if (el.classList.contains('is-placed')) apply(rect.left, rect.top, true);
+    };
+
+    el.addEventListener('mousedown', onDown);
+    el.addEventListener('touchstart', onDown, { passive: false });
+    el.addEventListener('click', onClickCapture, true);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchend', onUp);
+    window.addEventListener('resize', onResize);
+
+    const dispose = () => {
+      el.removeEventListener('mousedown', onDown);
+      el.removeEventListener('touchstart', onDown);
+      el.removeEventListener('click', onClickCapture, true);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchend', onUp);
+      window.removeEventListener('resize', onResize);
+      this._dragHandlers.delete(el);
+    };
+    this._dragHandlers.set(el, dispose);
+    return dispose;
+  },
+
+  disposeDraggable(el) {
+    const dispose = this._dragHandlers.get(el);
+    if (dispose) dispose();
+  },
+
+
 
 
   getCursorLine(textarea) {
