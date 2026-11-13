@@ -64,6 +64,7 @@ dotnet run --project Aoi.Interpreter -- -i
 - `impl` 中的运算符定义（特征系统为简化实现）
 - 内置 `printLine` / `print` / `toStr`
 - 运行时防护：调用深度上限（默认 1 024）、求值步数上限（默认 5 000 万），并用 `EnsureSufficientExecutionStack` 把递归栈溢出转成可捕获错误；playground 使用更紧的限额（深度 512 / 步数 200 万）
+- 复合赋值 `+=`/`-=`/`*=`/`/=`/`%=`、顶层表达式块、`for () in …` 丢弃绑定、以及 `printLine x op y` 形式的并列调用
 
 **尚未完整实现或仅部分支持：**
 

@@ -525,6 +525,7 @@ public sealed class Interpreter
             return ApplyJuxtaposed(parts[0], parts[1]);
 
         // Odd length: prefer binary ops when middle parts are known binary operator names.
+        // e.g. `a + b + c`
         if (parts.Count % 2 == 1 && IsBinaryOpName(parts[1]))
         {
             var result = Eval(parts[0]);
@@ -535,6 +536,17 @@ public sealed class Interpreter
                 result = EvalBinaryOp(opName, result, right);
             }
             return result;
+        }
+
+        // Even length ending with `lhs binOp rhs`: treat as unary apps around a binary call.
+        // e.g. `printLine "ab" repeat 3` => printLine ("ab" repeat 3)
+        if (parts.Count >= 4 && parts.Count % 2 == 0 && IsBinaryOpName(parts[^2]))
+        {
+            var binary = EvalBinaryOp(OpNameOf(parts[^2]), Eval(parts[^3]), Eval(parts[^1]));
+            var accBin = binary;
+            for (int i = parts.Count - 4; i >= 0; i--)
+                accBin = ApplyJuxtaposedValue(parts[i], accBin);
+            return accBin;
         }
 
         // Otherwise right-associative unary application: a b c => a (b c)
@@ -1131,6 +1143,9 @@ public sealed class Interpreter
                 break;
             case TupleDeclPattern t:
             {
+                // `()` is a wildcard / discard pattern (e.g. `for () in 0..n`).
+                if (t.Elements.Count == 0)
+                    break;
                 if (value is not TupleValue tv)
                     throw new AoiException("Expected tuple for destructuring");
                 for (int i = 0; i < t.Elements.Count; i++)
