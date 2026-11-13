@@ -118,11 +118,22 @@ public sealed class StructValue : AoiValue
         IsClass = isClass;
     }
     public override string TypeName => StructName;
+    [ThreadStatic] private static HashSet<object>? _copySeen;
     public override AoiValue Copy()
     {
         if (IsClass) return this;
-        return new StructValue(StructName,
-            Fields.ToDictionary(kv => kv.Key, kv => kv.Value.Copy()), false);
+        _copySeen ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
+        if (!_copySeen.Add(this))
+            return this; // cycle (e.g. self-referential struct)
+        try
+        {
+            return new StructValue(StructName,
+                Fields.ToDictionary(kv => kv.Key, kv => kv.Value.Copy()), false);
+        }
+        finally
+        {
+            _copySeen.Remove(this);
+        }
     }
     [ThreadStatic] private static HashSet<object>? _toStringSeen;
 
@@ -271,6 +282,8 @@ public sealed class UserOperator
     public required bool IsBinary { get; init; }
     public DeclPattern? Lhs { get; init; }
     public required DeclPattern Rhs { get; init; }
+    /// <summary>Indexer set: pattern for the index (self.[index] = value).</summary>
+    public DeclPattern? Index { get; init; }
     public required Expr Body { get; init; }
     public string? ImplName { get; init; }
 }

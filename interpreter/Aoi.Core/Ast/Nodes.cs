@@ -390,6 +390,13 @@ public sealed class GroupedOpExpr : Expr
     public required string Op { get; set; }
 }
 
+/// <summary>Literal with glued suffix, e.g. <c>2.0i</c> / <c>42suf</c>.</summary>
+public sealed class LiteralSuffixExpr : Expr
+{
+    public required Expr Value { get; set; }
+    public required string Suffix { get; set; }
+}
+
 // --- Patterns ---
 
 public abstract class DeclPattern : AstNode { }

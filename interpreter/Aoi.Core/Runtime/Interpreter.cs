@@ -299,21 +299,33 @@ public sealed class Interpreter
                 break;
             case GetDecl get:
             {
-                var uo = new UserOperator
+                if (get.IsIndexer)
                 {
-                    Name = get.PropertyName ?? "[]",
-                    IsBinary = get.IsIndexer,
-                    Lhs = get.Self,
-                    Rhs = get.Index ?? new NameDeclPattern { Name = "_" },
-                    Body = get.Body,
-                };
-                if (get.IsIndexer) _indexGetters[get.PropertyName ?? ""] = uo;
-                else if (get.PropertyName != null) _getters[get.PropertyName] = uo;
-                // Also store under self type name if available
-                if (get.SelfType is NamedTypeRef nt)
+                    var uo = new UserOperator
+                    {
+                        Name = "[]",
+                        IsBinary = true,
+                        Lhs = get.Self,
+                        Rhs = get.Index!,
+                        Body = get.Body,
+                    };
+                    _indexGetters[""] = uo;
+                    if (get.SelfType is NamedTypeRef nt)
+                        _indexGetters[nt.Name] = uo;
+                }
+                else if (get.PropertyName != null)
                 {
-                    if (get.IsIndexer) _indexGetters[nt.Name] = uo;
-                    else _getters[$"{nt.Name}.{get.PropertyName}"] = uo;
+                    // Unary: bind the instance as Rhs (self pattern).
+                    var uo = new UserOperator
+                    {
+                        Name = get.PropertyName,
+                        IsBinary = false,
+                        Rhs = get.Self,
+                        Body = get.Body,
+                    };
+                    _getters[get.PropertyName] = uo;
+                    if (get.SelfType is NamedTypeRef nt)
+                        _getters[$"{nt.Name}.{get.PropertyName}"] = uo;
                 }
                 break;
             }
@@ -325,10 +337,21 @@ public sealed class Interpreter
                     IsBinary = true,
                     Lhs = set.Self,
                     Rhs = set.Value,
+                    Index = set.Index,
                     Body = set.Body,
                 };
-                if (set.IsIndexer) _indexSetters[set.PropertyName ?? ""] = uo;
-                else if (set.PropertyName != null) _setters[set.PropertyName] = uo;
+                if (set.IsIndexer)
+                {
+                    _indexSetters[""] = uo;
+                    if (set.SelfType is NamedTypeRef nt)
+                        _indexSetters[nt.Name] = uo;
+                }
+                else if (set.PropertyName != null)
+                {
+                    _setters[set.PropertyName] = uo;
+                    if (set.SelfType is NamedTypeRef nt)
+                        _setters[$"{nt.Name}.{set.PropertyName}"] = uo;
+                }
                 break;
             }
             case LiteralSuffixDecl lit:
@@ -511,6 +534,12 @@ public sealed class Interpreter
                 return MakeCurriedBinary(go.Op);
             case CallLikeExpr call:
                 return EvalCallLike(call);
+            case LiteralSuffixExpr ls:
+            {
+                if (!_literals.TryGetValue(ls.Suffix, out var litOp))
+                    throw new AoiException($"Unknown literal suffix '{ls.Suffix}'", ls.Line, ls.Column);
+                return InvokeUserOp(litOp, null, Eval(ls.Value));
+            }
             default:
                 throw new AoiException($"Unsupported expression: {expr.GetType().Name}", expr.Line, expr.Column);
         }
@@ -525,15 +554,14 @@ public sealed class Interpreter
             return ApplyJuxtaposed(parts[0], parts[1]);
 
         // Odd length: prefer binary ops when middle parts are known binary operator names.
-        // e.g. `a + b + c`
+        // e.g. `a + b + c` or `1 add 2` with a binary OperatorValue binding.
         if (parts.Count % 2 == 1 && IsBinaryOpName(parts[1]))
         {
             var result = Eval(parts[0]);
             for (int i = 1; i < parts.Count; i += 2)
             {
-                var opName = OpNameOf(parts[i]);
                 var right = Eval(parts[i + 1]);
-                result = EvalBinaryOp(opName, result, right);
+                result = ApplyBinaryOpExpr(parts[i], result, right);
             }
             return result;
         }
@@ -542,7 +570,7 @@ public sealed class Interpreter
         // e.g. `printLine "ab" repeat 3` => printLine ("ab" repeat 3)
         if (parts.Count >= 4 && parts.Count % 2 == 0 && IsBinaryOpName(parts[^2]))
         {
-            var binary = EvalBinaryOp(OpNameOf(parts[^2]), Eval(parts[^3]), Eval(parts[^1]));
+            var binary = ApplyBinaryOpExpr(parts[^2], Eval(parts[^3]), Eval(parts[^1]));
             var accBin = binary;
             for (int i = parts.Count - 4; i >= 0; i--)
                 accBin = ApplyJuxtaposedValue(parts[i], accBin);
@@ -570,7 +598,18 @@ public sealed class Interpreter
         if (name is "+" or "-" or "*" or "/" or "%" or "==" or "!=" or "<" or "<=" or ">" or ">="
             or "<<" or ">>" or "&" or "|" or "^" or "&&" or "||" or "??" or "|>" or ".." or "@")
             return true;
-        return _operators.Any(o => o.Name == name && o.IsBinary);
+        if (_operators.Any(o => o.Name == name && o.IsBinary))
+            return true;
+        if (_env.TryGet(name, out var bound) && bound is OperatorValue ov && ov.IsBinary)
+            return true;
+        return false;
+    }
+
+    private AoiValue ApplyBinaryOpExpr(Expr opExpr, AoiValue left, AoiValue right)
+    {
+        if (opExpr is IdentExpr id && _env.TryGet(id.Name, out var bound) && bound is OperatorValue ov && ov.IsBinary)
+            return ov.Invoke(this, left, right);
+        return EvalBinaryOp(OpNameOf(opExpr), left, right);
     }
 
     private static string OpNameOf(Expr expr) => expr switch
@@ -772,15 +811,17 @@ public sealed class Interpreter
         throw new AoiException($"No operator '{op}' for {left.TypeName} and {right.TypeName}");
     }
 
-    private AoiValue InvokeUserOp(UserOperator op, AoiValue? left, AoiValue right)
+    private AoiValue InvokeUserOp(UserOperator op, AoiValue? left, AoiValue right, AoiValue? index = null)
     {
         EnterCall();
         var prev = _env;
         _env = new Environment(prev);
         try
         {
-            if (op.IsBinary && op.Lhs != null && left != null)
+            if (op.Lhs != null && left != null)
                 BindDecl(op.Lhs, left, _env);
+            if (op.Index != null && index != null)
+                BindDecl(op.Index, index, _env);
             BindDecl(op.Rhs, right, _env);
             try { return Eval(op.Body); }
             catch (AoiReturnException ret) { return ret.Value; }
@@ -952,14 +993,23 @@ public sealed class Interpreter
                 return f;
             }
         }
-        // Getter
+        // Getter — instance is the unary operand (Rhs = self pattern).
         if (_getters.TryGetValue(member, out var getter))
-            return InvokeUserOp(getter, obj, UnitValue.Instance);
+            return InvokeUserOp(getter, null, obj);
         if (obj is StructValue sv2 && _getters.TryGetValue($"{sv2.StructName}.{member}", out var g2))
-            return InvokeUserOp(g2, obj, UnitValue.Instance);
+            return InvokeUserOp(g2, null, obj);
 
         throw new AoiException($"No member '{member}' on {obj.TypeName}");
     }
+
+    private bool HasGetter(AoiValue obj, string member)
+    {
+        if (_getters.ContainsKey(member)) return true;
+        return obj is StructValue sv && _getters.ContainsKey($"{sv.StructName}.{member}");
+    }
+
+    private bool HasPlainField(AoiValue obj, string member)
+        => obj is StructValue sv && sv.Fields.ContainsKey(member);
 
     private AoiValue GetIndex(AoiValue obj, AoiValue index)
     {
@@ -983,6 +1033,13 @@ public sealed class Interpreter
                 throw new AoiThrowException(new ExceptionValue("IndexOutOfRangeException", i.ToString()));
             return span.Array.Elements[span.Start + i];
         }
+        if (obj is StrValue str)
+        {
+            int i = (int)((IntValue)index).Value;
+            if (i < 0 || i >= str.Value.Length)
+                throw new AoiThrowException(new ExceptionValue("IndexOutOfRangeException", i.ToString()));
+            return new CharValue(str.Value[i]);
+        }
         // Custom indexer
         foreach (var kv in _indexGetters)
         {
@@ -992,27 +1049,35 @@ public sealed class Interpreter
         throw new AoiException($"Cannot index {obj.TypeName}");
     }
 
-    private void SetMember(AoiValue obj, string member, AoiValue value)
+    /// <summary>
+    /// Sets a member. When a property setter runs, returns its result (typically updated self)
+    /// so callers can write it back into the outer binding for value types.
+    /// </summary>
+    private AoiValue? SetMember(AoiValue obj, string member, AoiValue value)
     {
         if (obj is TupleValue tv && int.TryParse(member, out int idx))
         {
             tv.Elements[idx] = value;
-            return;
+            return obj;
         }
-        if (obj is StructValue sv)
+        if (obj is StructValue sv && sv.Fields.ContainsKey(member))
         {
             sv.Fields[member] = value;
-            return;
+            return obj;
         }
         if (_setters.TryGetValue(member, out var setter))
+            return InvokeUserOp(setter, obj, value);
+        if (obj is StructValue sv2 && _setters.TryGetValue($"{sv2.StructName}.{member}", out var s2))
+            return InvokeUserOp(s2, obj, value);
+        if (obj is StructValue sv3)
         {
-            InvokeUserOp(setter, obj, value);
-            return;
+            sv3.Fields[member] = value;
+            return obj;
         }
         throw new AoiException($"Cannot set member '{member}' on {obj.TypeName}");
     }
 
-    private void SetIndex(AoiValue obj, AoiValue index, AoiValue value)
+    private AoiValue? SetIndex(AoiValue obj, AoiValue index, AoiValue value)
     {
         if (obj is ArrayValue arr)
         {
@@ -1020,29 +1085,21 @@ public sealed class Interpreter
             if (i < 0 || i >= arr.Elements.Count)
                 throw new AoiThrowException(new ExceptionValue("IndexOutOfRangeException", i.ToString()));
             arr.Elements[i] = value;
-            return;
+            return obj;
         }
         if (obj is SpanValue span)
         {
             int i = (int)((IntValue)index).Value;
             span.Array.Elements[span.Start + i] = value;
-            return;
+            return obj;
         }
         foreach (var kv in _indexSetters)
         {
-            // set self.[index] = value — need both index and value; simplified
-            var prev = _env;
-            _env = new Environment(prev);
             try
             {
-                BindDecl(kv.Value.Lhs!, obj, _env);
-                // Rhs is value pattern in our storage; index not separately stored well
-                BindDecl(kv.Value.Rhs, value, _env);
-                Eval(kv.Value.Body);
-                return;
+                return InvokeUserOp(kv.Value, obj, value, index);
             }
             catch { }
-            finally { _env = prev; }
         }
         throw new AoiException($"Cannot set index on {obj.TypeName}");
     }
@@ -1139,7 +1196,8 @@ public sealed class Interpreter
         switch (pattern)
         {
             case NameDeclPattern n:
-                env.Define(n.Name, value.Copy());
+                if (n.Name != "_")
+                    env.Define(n.Name, value.Copy());
                 break;
             case TupleDeclPattern t:
             {
@@ -1219,27 +1277,55 @@ public sealed class Interpreter
                 break;
             case MemberExpr me:
             {
-                var obj = Eval(me.Object);
-                // Value-type property update semantics simplified: mutate if class/ref
-                if (obj is StructValue sv && !sv.IsClass)
+                // Value-type property nested write: a.prop.x = b ⇒ getter → mutate → setter.
+                if (me.Object is MemberExpr parentMe)
                 {
-                    // If object is a member of something, need reassignment — simplified mutate copy back via ident
-                    SetMember(obj, me.Member, value);
-                    if (me.Object is IdentExpr oid)
-                        _env.Assign(oid.Name, obj);
+                    var parentObj = Eval(parentMe.Object);
+                    if (HasGetter(parentObj, parentMe.Member) && !HasPlainField(parentObj, parentMe.Member))
+                    {
+                        var temp = GetMember(parentObj, parentMe.Member).Copy();
+                        SetMember(temp, me.Member, value);
+                        var written = SetMember(parentObj, parentMe.Member, temp) ?? parentObj;
+                        WriteBackExpr(parentMe.Object, written);
+                        return;
+                    }
                 }
-                else
-                    SetMember(obj, me.Member, value);
+
+                var obj = Eval(me.Object);
+                var updated = SetMember(obj, me.Member, value) ?? obj;
+                if (obj is StructValue sv && !sv.IsClass)
+                    WriteBackExpr(me.Object, updated);
+                else if (!ReferenceEquals(updated, obj))
+                    WriteBackExpr(me.Object, updated);
                 break;
             }
             case IndexExpr ix:
             {
                 var obj = Eval(ix.Object);
-                SetIndex(obj, Eval(ix.Index), value);
+                var updated = SetIndex(obj, Eval(ix.Index), value) ?? obj;
+                if (!ReferenceEquals(updated, obj))
+                    WriteBackExpr(ix.Object, updated);
                 break;
             }
             default:
                 throw new AoiException("Invalid assignment target", target.Line, target.Column);
+        }
+    }
+
+    private void WriteBackExpr(Expr target, AoiValue value)
+    {
+        switch (target)
+        {
+            case IdentExpr id:
+                // In-place mutation already updated the bound object — skip redundant copy
+                // (also avoids blowing the stack on self-referential structs).
+                if (_env.TryGet(id.Name, out var cur) && ReferenceEquals(cur, value))
+                    return;
+                _env.Assign(id.Name, value.Copy());
+                break;
+            case MemberExpr or IndexExpr:
+                AssignToExpr(target, value);
+                break;
         }
     }
 
