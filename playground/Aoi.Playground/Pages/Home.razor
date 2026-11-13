@@ -103,24 +103,24 @@
 
     protected override void OnInitialized()
     {
-        // Apply #code= once per full page load (Edit / Share links).
-        if (State.HashApplied) return;
+        // Load shared / Edit links. No force-reload so MusicPlayer in MainLayout keeps state.
+        ApplyCodeFromUri();
+    }
 
+    private void ApplyCodeFromUri()
+    {
         var uri = Nav.ToAbsoluteUri(Nav.Uri);
-        if (!string.IsNullOrEmpty(uri.Fragment) && uri.Fragment.StartsWith("#code="))
-        {
-            var decoded = ShareCodec.Decode(uri.Fragment["#code=".Length..]);
-            if (!string.IsNullOrEmpty(decoded))
-            {
-                State.Source = decoded;
-                State.ActiveSampleId = null;
-                State.Output = "";
-                State.Error = null;
-                State.LastElapsedMs = null;
-            }
-        }
+        if (string.IsNullOrEmpty(uri.Fragment) || !uri.Fragment.StartsWith("#code="))
+            return;
 
-        State.HashApplied = true;
+        var decoded = ShareCodec.Decode(uri.Fragment["#code=".Length..]);
+        if (string.IsNullOrEmpty(decoded)) return;
+
+        State.Source = decoded;
+        State.ActiveSampleId = null;
+        State.Output = "";
+        State.Error = null;
+        State.LastElapsedMs = null;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -1,5 +1,6 @@
 @using Aoi.Playground.Services
 @inject NavigationManager Nav
+@inject PlaygroundState Playground
 
 <div class="doc-snippet @(_runnable ? null : "is-syntax")">
     <div class="doc-snippet-bar">
@@ -71,8 +72,16 @@
 
     private void OpenInPlayground()
     {
-        var payload = ShareCodec.Encode(Code);
+        // SPA navigate (no forceLoad) so MainLayout's MusicPlayer keeps playing.
+        Playground.Source = Code ?? "";
+        Playground.ActiveSampleId = null;
+        Playground.Output = "";
+        Playground.Error = null;
+        Playground.LastElapsedMs = null;
+
+        var payload = ShareCodec.Encode(Playground.Source);
         var url = Nav.ToAbsoluteUri(Nav.BaseUri).GetLeftPart(UriPartial.Path).TrimEnd('/') + "/#code=" + payload;
-        Nav.NavigateTo(url, forceLoad: true);
+        Nav.NavigateTo(url, forceLoad: false);
     }
 }
+

@@ -10,5 +10,4 @@ public sealed class PlaygroundState
     public string Output { get; set; } = "";
     public string? Error { get; set; }
     public long? LastElapsedMs { get; set; }
-    public bool HashApplied { get; set; }
 }
