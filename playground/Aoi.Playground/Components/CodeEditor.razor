@@ -1,0 +1,69 @@
+@using Aoi.Playground.Services
+@inject IJSRuntime Js
+
+<div class="code-editor" @ref="_root">
+    <pre class="code-highlight" @ref="_highlight" aria-hidden="true"><code>@((MarkupString)_html)</code></pre>
+    <textarea class="code-input"
+              @ref="_textarea"
+              value="@Value"
+              @oninput="OnInput"
+              @onscroll="OnScroll"
+              @onkeydown="OnKeyDown"
+              spellcheck="false"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              aria-label="@AriaLabel"></textarea>
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public EventCallback OnRunRequested { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Source editor";
+
+    private ElementReference _root;
+    private ElementReference _textarea;
+    private ElementReference _highlight;
+    private string _html = "\n";
+
+    protected override void OnParametersSet()
+    {
+        _html = AoiHighlighter.ToHtml(Value);
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var next = e.Value?.ToString() ?? "";
+        await ValueChanged.InvokeAsync(next);
+        // Highlight refreshes via Parameter set from parent.
+        await SyncScroll();
+    }
+
+    private async Task OnScroll()
+    {
+        await SyncScroll();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey))
+            await OnRunRequested.InvokeAsync();
+        else if (e.Key == "Tab")
+        {
+            // Let browser handle tab normally for accessibility; no preventDefault in Blazor easily.
+        }
+    }
+
+    private async Task SyncScroll()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("aoiPlayground.syncEditorScroll", _textarea, _highlight);
+        }
+        catch
+        {
+            // Ignore during first render before JS loads.
+        }
+    }
+}

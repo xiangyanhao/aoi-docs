@@ -2,6 +2,8 @@
 
 基于 Blazor WebAssembly 的浏览器端 Aoi playground，可部署到 GitHub Pages。
 
+功能：示例运行、Share 链接、浅色/深色主题、Aoi 语法高亮。
+
 本地开发：
 
 ```bash
