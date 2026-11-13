@@ -27,7 +27,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/app.css" />
+    <!-- ASSET_V: rewritten in CI to the deploy commit so browsers do not keep stale css/js -->
+    <link rel="stylesheet" href="css/app.css?v=dev" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%230b1c33'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23f0b429'/%3E%3C/svg%3E" />
     <script>
       (function () {
@@ -58,7 +59,7 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">×</a>
     </div>
-    <script src="js/playground.js"></script>
+    <script src="js/playground.js?v=dev"></script>
     <script src="_framework/blazor.webassembly.js"></script>
 </body>
 

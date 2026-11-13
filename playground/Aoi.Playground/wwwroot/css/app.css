@@ -626,8 +626,10 @@ body.is-resizing textarea {
   z-index: 35;
   width: 330px;
   min-height: 86px;
+  height: auto;
+  overflow: visible;
   display: grid;
-  grid-template-columns: 66px 1fr;
+  grid-template-columns: 66px minmax(0, 1fr);
   gap: 0.75rem;
   align-items: center;
   padding: 0.55rem 0.7rem 0.55rem 0.55rem;
@@ -694,8 +696,12 @@ body.is-resizing textarea {
 
 .music-toggle {
   appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
   width: 1.7rem;
   height: 1.7rem;
+  min-width: 1.7rem;
+  min-height: 1.7rem;
   border-radius: 50%;
   border: 1px solid rgba(240, 180, 41, 0.45);
   background: rgba(240, 180, 41, 0.16);
@@ -704,6 +710,8 @@ body.is-resizing textarea {
   place-items: center;
   cursor: pointer;
   padding: 0;
+  margin: 0;
+  line-height: 0;
 }
 
 .music-toggle:hover {
