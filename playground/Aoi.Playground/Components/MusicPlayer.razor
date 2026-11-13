@@ -2,6 +2,8 @@
 @implements IAsyncDisposable
 
 <div class="music-player @(_playing ? "is-playing" : null) @(_error != null ? "is-error" : null)"
+     @ref="_root"
+     title="拖拽封面或标题可移动"
      aria-label="背景音乐">
     <img class="music-cover" src="@CoverUrl" alt="" width="66" height="66" draggable="false" />
     <div class="music-body">
@@ -55,6 +57,7 @@
     private const string AudioUrl = "https://api.injahow.cn/meting/?server=netease&type=url&id=" + SongId;
     private const string CoverUrl = "https://p3.music.126.net/j-Oph-9o8HPxk9V09L6p2A==/1290826651047789.jpg?param=90y90";
 
+    private ElementReference _root;
     private ElementReference _audio;
     private bool _playing;
     private bool _busy;
@@ -68,7 +71,6 @@
     private string PlayedStyle =>
         $"width: {(_progress * 100).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}%";
 
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_bound) return;
@@ -77,6 +79,7 @@
         try
         {
             await Js.InvokeVoidAsync("aoiPlayground.bindAudio", _audio, _self);
+            await Js.InvokeVoidAsync("aoiPlayground.initDraggable", _root, "aoi-music-pos");
         }
         catch { /* ignore */ }
     }
@@ -191,7 +194,10 @@
         try
         {
             if (_bound)
+            {
+                await Js.InvokeVoidAsync("aoiPlayground.disposeDraggable", _root);
                 await Js.InvokeVoidAsync("aoiPlayground.unbindAudio", _audio);
+            }
         }
         catch { /* ignore */ }
         _self?.Dispose();
