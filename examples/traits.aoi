@@ -1,0 +1,57 @@
+// 第 4 章：特征、具名实现、默认实现与特征要求
+
+trait Ord2[T] {
+    op a < b: T <> T -> bool;
+    op a <= b: T <> T -> bool { a < b || a == b }
+    op a > b: T <> T -> bool { !(a <= b) }
+    op a >= b: T <> T -> bool { !(a < b) }
+}
+
+struct Vector {
+    x: float;
+    y: float;
+}
+
+impl ByX of Ord2[Vector] {
+    op a < b { a.x < b.x }
+}
+
+impl ByY of Ord2[Vector] {
+    op a < b { a.y < b.y }
+}
+
+// 将 ByX 设为 Ord2[Vector] 的默认实现。
+impl of Ord2[Vector] = ByX;
+
+op maxOf[T: Ord2[T]] (a, b): (T, T) -> T {
+    if a >= b then a else b
+}
+
+let a = new Vector { x: 1.0, y: 9.0 };
+let b = new Vector { x: 5.0, y: 2.0 };
+
+printLine (maxOf (a, b)).x;              // 默认实现 ByX
+printLine (maxOf[Vector: ByY] (a, b)).x; // 显式选择 ByY
+printLine (a Ord2[Vector]::< b);
+printLine (a ByY::< b);
+
+// 特征自身的泛型要求：TVec 必须实现 Add[TVec]。
+trait VectorSpace[TNum, TVec: Add[TVec]] {
+    op a * u: TNum <> TVec -> TVec;
+}
+
+impl of Add[Vector] {
+    op a + b {
+        new Vector { x: a.x + b.x, y: a.y + b.y }
+    }
+}
+
+impl of VectorSpace[float, Vector] {
+    op a * u: float <> Vector -> Vector {
+        new Vector { x: a * u.x, y: a * u.y }
+    }
+}
+
+let scaled = 2.0 VectorSpace[float, Vector]::* a;
+printLine scaled.x;
+printLine scaled.y;

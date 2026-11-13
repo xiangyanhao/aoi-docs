@@ -264,21 +264,7 @@ public sealed class Parser
     {
         var name = Consume(TokenKind.Identifier, "Expected type name").Text;
         var decl = new StructDecl { Name = name, IsClass = isClass };
-        if (Match(TokenKind.LBracket))
-        {
-            do
-            {
-                if (Check(TokenKind.RBracket)) break;
-                decl.TypeParams.Add(Consume(TokenKind.Identifier, "Expected type param").Text);
-                // skip : requirements for now
-                if (Match(TokenKind.Colon))
-                {
-                    while (!Check(TokenKind.Comma) && !Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
-                        Advance();
-                }
-            } while (Match(TokenKind.Comma));
-            Consume(TokenKind.RBracket, "Expected ']'");
-        }
+        decl.TypeParams = ParseTypeParameters();
         Consume(TokenKind.LBrace, "Expected '{'");
         while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
         {
@@ -314,15 +300,7 @@ public sealed class Parser
     {
         var name = Consume(TokenKind.Identifier, "Expected union name").Text;
         var decl = new UnionDecl { Name = name };
-        if (Match(TokenKind.LBracket))
-        {
-            do
-            {
-                if (Check(TokenKind.RBracket)) break;
-                decl.TypeParams.Add(Consume(TokenKind.Identifier, "Expected type param").Text);
-            } while (Match(TokenKind.Comma));
-            Consume(TokenKind.RBracket, "Expected ']'");
-        }
+        decl.TypeParams = ParseTypeParameters();
         Consume(TokenKind.LBrace, "Expected '{'");
         while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
         {
@@ -341,8 +319,9 @@ public sealed class Parser
         // Forms:
         // op name rhs: Type -> Result { }
         // op lhs name rhs: L <> R -> Result { }
-        // Distinguish by looking ahead for '<>' before the body.
-        if (HasDiamondBeforeBody())
+        // Impl members may omit the type annotation entirely (op a + b { ... }),
+        // so look for a binary operator token in the header as well as '<>'.
+        if (HasDiamondBeforeBody() || LooksLikeBinaryOpHeader())
             return ParseBinaryOpDecl();
         return ParseUnaryOpDecl();
     }
@@ -420,27 +399,14 @@ public sealed class Parser
     {
         var name = Consume(TokenKind.Identifier, "Expected trait name").Text;
         var decl = new TraitDecl { Name = name };
-        if (Match(TokenKind.LBracket))
-        {
-            do
-            {
-                if (Check(TokenKind.RBracket)) break;
-                decl.TypeParams.Add(Consume(TokenKind.Identifier, "Expected type param").Text);
-                if (Match(TokenKind.Colon))
-                {
-                    while (!Check(TokenKind.Comma) && !Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
-                        Advance();
-                }
-            } while (Match(TokenKind.Comma));
-            Consume(TokenKind.RBracket, "Expected ']'");
-        }
+        decl.TypeParams = ParseTypeParameters();
         Consume(TokenKind.LBrace, "Expected '{'");
         while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
         {
             Consume(TokenKind.Op, "Expected 'op'");
-            // Parse op header ending with ; or body
-            var saved = _pos;
+            var qualifier = TryParseMemberQualifier();
             var op = ParseOpDeclLoose();
+            op.Qualifier = qualifier;
             decl.Members.Add(op);
         }
         Consume(TokenKind.RBrace, "Expected '}'");
@@ -450,7 +416,7 @@ public sealed class Parser
     private OpDecl ParseOpDeclLoose()
     {
         // Like ParseOpDecl but body may be ';'
-        if (HasDiamondBeforeBody())
+        if (HasDiamondBeforeBody() || LooksLikeBinaryOpHeader())
         {
             var lhs = ParseDeclPattern();
             var name = ConsumeOpName();
@@ -465,12 +431,13 @@ public sealed class Parser
                 Consume(TokenKind.Arrow, "Expected '->'");
                 resultType = ParseType();
             }
+            bool declarationOnly = Check(TokenKind.Semi);
             Expr body = Match(TokenKind.Semi) ? new UnitExpr() : ParseBlockExprOrStmt();
             return new OpDecl
             {
                 Lhs = lhs, Name = name, Rhs = rhs,
                 TypeParams = tparams, LhsType = lhsType, RhsType = rhsType,
-                ResultType = resultType, Body = body,
+                ResultType = resultType, Body = body, IsDeclarationOnly = declarationOnly,
             };
         }
 
@@ -484,42 +451,20 @@ public sealed class Parser
             Consume(TokenKind.Arrow, "Expected '->'");
             resType = ParseType();
         }
+        bool udeclarationOnly = Check(TokenKind.Semi);
         Expr ubody = Match(TokenKind.Semi) ? new UnitExpr() : ParseBlockExprOrStmt();
-        return new OpDecl { Name = uname, Rhs = urhs, TypeParams = tp, RhsType = rType, ResultType = resType, Body = ubody };
+        return new OpDecl { Name = uname, Rhs = urhs, TypeParams = tp, RhsType = rType, ResultType = resType, Body = ubody, IsDeclarationOnly = udeclarationOnly };
     }
 
     private ImplDecl ParseImpl()
     {
         var decl = new ImplDecl();
-        List<string> tparams = new();
-        if (Match(TokenKind.LBracket))
-        {
-            do
-            {
-                if (Check(TokenKind.RBracket)) break;
-                tparams.Add(Consume(TokenKind.Identifier, "Expected type param").Text);
-                if (Match(TokenKind.Colon))
-                {
-                    while (!Check(TokenKind.Comma) && !Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
-                        Advance();
-                }
-            } while (Match(TokenKind.Comma));
-            Consume(TokenKind.RBracket, "Expected ']'");
-        }
-        decl.TypeParams.AddRange(tparams);
+        decl.TypeParams = ParseTypeParameters();
 
         if (Match(TokenKind.Of))
         {
             decl.TraitName = Consume(TokenKind.Identifier, "Expected trait").Text;
-            if (Match(TokenKind.LBracket))
-            {
-                do
-                {
-                    if (Check(TokenKind.RBracket)) break;
-                    decl.TraitArgs.Add(ParseType());
-                } while (Match(TokenKind.Comma));
-                Consume(TokenKind.RBracket, "Expected ']'");
-            }
+            decl.TraitArgs = ParseTraitArgList();
         }
         else if (Check(TokenKind.Identifier))
         {
@@ -527,15 +472,7 @@ public sealed class Parser
             if (Match(TokenKind.Of))
             {
                 decl.TraitName = Consume(TokenKind.Identifier, "Expected trait").Text;
-                if (Match(TokenKind.LBracket))
-                {
-                    do
-                    {
-                        if (Check(TokenKind.RBracket)) break;
-                        decl.TraitArgs.Add(ParseType());
-                    } while (Match(TokenKind.Comma));
-                    Consume(TokenKind.RBracket, "Expected ']'");
-                }
+                decl.TraitArgs = ParseTraitArgList();
             }
         }
 
@@ -550,12 +487,10 @@ public sealed class Parser
         while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
         {
             Consume(TokenKind.Op, "Expected 'op'");
-            // Skip optional Trait:: prefix
-            if (Check(TokenKind.Identifier) && Peek(1).Kind == TokenKind.ColonColon)
-            {
-                Advance(); Advance();
-            }
-            decl.Members.Add(ParseOpDeclLoose());
+            var qualifier = TryParseMemberQualifier();
+            var member = ParseOpDeclLoose();
+            member.Qualifier = qualifier;
+            decl.Members.Add(member);
         }
         Consume(TokenKind.RBrace, "Expected '}'");
         return decl;
@@ -565,15 +500,7 @@ public sealed class Parser
     {
         var name = Consume(TokenKind.Identifier, "Expected type name").Text;
         var decl = new TypeAliasDecl { Name = name, Definition = new NamedTypeRef { Name = "()" } };
-        if (Match(TokenKind.LBracket))
-        {
-            do
-            {
-                if (Check(TokenKind.RBracket)) break;
-                decl.TypeParams.Add(Consume(TokenKind.Identifier, "Expected type param").Text);
-            } while (Match(TokenKind.Comma));
-            Consume(TokenKind.RBracket, "Expected ']'");
-        }
+        decl.TypeParams = ParseTypeParameters();
         Consume(TokenKind.Eq, "Expected '='");
         decl.Definition = ParseType();
         Match(TokenKind.Semi);
@@ -584,17 +511,19 @@ public sealed class Parser
     {
         bool implicit_ = Match(TokenKind.Implicit);
         if (!implicit_) Consume(TokenKind.Explicit, "Expected implicit/explicit");
+        var typeParams = ParseTypeParameters();
         var pattern = ParseDeclPattern();
         Consume(TokenKind.Colon, "Expected ':'");
         var from = ParseType();
         Consume(TokenKind.Arrow, "Expected '->'");
         var to = ParseType();
         var body = ParseBlockExprOrStmt();
-        return new ConvertDecl { Implicit = implicit_, Pattern = pattern, FromType = from, ToType = to, Body = body };
+        return new ConvertDecl { Implicit = implicit_, Pattern = pattern, TypeParams = typeParams, FromType = from, ToType = to, Body = body };
     }
 
     private GetDecl ParseGet()
     {
+        var typeParams = ParseTypeParameters();
         var self = ParseDeclPattern();
         Consume(TokenKind.Dot, "Expected '.'");
         string? prop = null;
@@ -623,7 +552,7 @@ public sealed class Parser
         var body = ParseBlockExprOrStmt();
         return new GetDecl
         {
-            Self = self, PropertyName = prop, Index = index,
+            Self = self, PropertyName = prop, Index = index, TypeParams = typeParams,
             SelfType = selfType, IndexType = indexType, ResultType = resultType, Body = body,
         };
     }
@@ -631,6 +560,7 @@ public sealed class Parser
     private SetDecl ParseSetDecl()
     {
         Consume(TokenKind.Set, "Expected 'set'");
+        var typeParams = ParseTypeParameters();
         var self = ParseDeclPattern();
         Consume(TokenKind.Dot, "Expected '.'");
         string? prop = null;
@@ -661,13 +591,14 @@ public sealed class Parser
         var body = ParseBlockExprOrStmt();
         return new SetDecl
         {
-            Self = self, PropertyName = prop, Index = index, Value = value,
+            Self = self, PropertyName = prop, Index = index, Value = value, TypeParams = typeParams,
             SelfType = selfType, IndexType = indexType, ValueType = valueType, Body = body,
         };
     }
 
     private LiteralSuffixDecl ParseLiteralSuffix()
     {
+        var typeParams = ParseTypeParameters();
         var pattern = ParseDeclPattern();
         var suffix = Consume(TokenKind.Identifier, "Expected suffix").Text;
         Consume(TokenKind.Colon, "Expected ':'");
@@ -675,7 +606,7 @@ public sealed class Parser
         Consume(TokenKind.Arrow, "Expected '->'");
         var rt = ParseType();
         var body = ParseBlockExprOrStmt();
-        return new LiteralSuffixDecl { Pattern = pattern, Suffix = suffix, ValueType = vt, ResultType = rt, Body = body };
+        return new LiteralSuffixDecl { Pattern = pattern, Suffix = suffix, TypeParams = typeParams, ValueType = vt, ResultType = rt, Body = body };
     }
 
     private Expr ParseBlockExprOrStmt()
@@ -1030,6 +961,23 @@ public sealed class Parser
                 // a! null assert — only if not part of !=
                 expr = new NullAssertExpr { Operand = expr };
             }
+            else if (Match(TokenKind.ColonColon))
+            {
+                var member = Consume(TokenKind.Identifier, "Expected type parameter").Text;
+                expr = new TypeProjectionExpr { Value = expr, Member = member, Line = expr.Line };
+            }
+            else if (Check(TokenKind.LBracket) && LooksLikeDynWrap())
+            {
+                Advance(); // [
+                var impls = new List<ImplRefSyntax>();
+                while (!Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
+                {
+                    impls.Add(ParseImplRef());
+                    if (!Match(TokenKind.Comma)) break;
+                }
+                Consume(TokenKind.RBracket, "Expected ']'");
+                expr = new DynWrapExpr { Value = expr, Impls = impls, Line = expr.Line };
+            }
             else break;
         }
         return expr;
@@ -1174,46 +1122,39 @@ public sealed class Parser
             var tok = Previous();
             string name = tok.Text;
 
-            // TypeName::Member [value]
+            // Optional explicit generic arguments: name[Type, Type: Impl, ...].
+            // If this is not actually a type argument list (for example
+            // `value[Impl]` dyn wrapping) the runtime decides what to do.
+            var typeArgs = new List<TypeArgumentSyntax>();
+            if (Check(TokenKind.LBracket))
+            {
+                int saved = _pos;
+                try
+                {
+                    typeArgs = ParseTypeArguments();
+                }
+                catch (AoiException)
+                {
+                    _pos = saved;
+                    typeArgs = new List<TypeArgumentSyntax>();
+                }
+            }
+
+            // Qualified name: Type::Member / Trait[A, B]::op / Impl::op.
             if (Match(TokenKind.ColonColon))
             {
                 var member = ConsumeOpNameOrIdent();
-                Expr? value = null;
-                if (CanStartPrimary() || Check(TokenKind.Plus) || Check(TokenKind.Minus))
+                return Loc(new QualifiedExpr
                 {
-                    // Qualified with value: Union::Case value
-                    // Only if juxtaposition-like; for enums no value
-                    // Heuristic: if next can start primary and isn't statement end
-                    if (CanStartJuxtaposed() || CanStartPrimary())
-                    {
-                        // For Enum::Value typically next is not a value
-                        // For Union::Case value, value follows
-                        // Ambiguous - if next is identifier/literal/paren, take it when looking for union
-                        if (!Check(TokenKind.Semi) && !Check(TokenKind.Comma) && !Check(TokenKind.RParen)
-                            && !Check(TokenKind.RBrace) && CurrentBinaryOp() == null
-                            && !Check(TokenKind.Then) && !Check(TokenKind.Do) && !Check(TokenKind.Else)
-                            && !Check(TokenKind.Eof) && !Check(TokenKind.Is)
-                            && (Check(TokenKind.IntLiteral) || Check(TokenKind.FloatLiteral)
-                                || Check(TokenKind.StringLiteral) || Check(TokenKind.CharLiteral)
-                                || Check(TokenKind.True) || Check(TokenKind.False)
-                                || Check(TokenKind.LParen) || Check(TokenKind.New)
-                                || Check(TokenKind.Identifier) || Check(TokenKind.LBrace)))
-                        {
-                            // Prefer not consuming another identifier as value for Enum::Member in juxtaposition
-                            // Only take value for literals and structured exprs
-                            if (!Check(TokenKind.Identifier) || Peek(1).Kind is TokenKind.LBrace or TokenKind.LParen)
-                                value = ParseUnary();
-                            else if (Check(TokenKind.IntLiteral) || Check(TokenKind.FloatLiteral)
-                                     || Check(TokenKind.StringLiteral) || Check(TokenKind.LParen)
-                                     || Check(TokenKind.New) || Check(TokenKind.True) || Check(TokenKind.False))
-                                value = ParseUnary();
-                        }
-                    }
-                }
-                return Loc(new QualifiedExpr { TypeName = name, Member = member, Value = value }, tok);
+                    TypeName = name,
+                    Member = member,
+                    TypeArguments = typeArgs,
+                }, tok);
             }
 
-            // Cast: Type value  — handled via juxtaposition as unary
+            if (typeArgs.Count > 0)
+                return Loc(new IdentExpr { Name = name, TypeArguments = typeArgs }, tok);
+
             // Closure: name: Type => body  or name => body
             if (Match(TokenKind.Colon))
             {
@@ -1257,15 +1198,6 @@ public sealed class Parser
                     Rhs = new NameDeclPattern { Name = name },
                     Body = body,
                 }, tok);
-            }
-
-            // Optional generic args for op: name[T]
-            if (Match(TokenKind.LBracket))
-            {
-                // Could be generic op call name[Type] — keep as Ident for now and skip types
-                while (!Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
-                    Advance();
-                Consume(TokenKind.RBracket, "Expected ']'");
             }
 
             return Loc(new IdentExpr { Name = name }, tok);
@@ -1699,8 +1631,23 @@ public sealed class Parser
             if (Match(TokenKind.LBracket))
             {
                 while (!Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
-                    Advance();
+                {
+                    var tp = Consume(TokenKind.Identifier, "Expected dyn type param").Text;
+                    var parameter = new TypeParameterSyntax { Name = tp };
+                    if (Match(TokenKind.Colon))
+                        parameter.Requirements.AddRange(ParseTraitRequirementList());
+                    dyn.TypeParams.Add(parameter);
+                    dyn.Requirements.AddRange(parameter.Requirements);
+                    if (!Match(TokenKind.Comma)) break;
+                }
                 Consume(TokenKind.RBracket, "Expected ']'");
+            }
+            else
+            {
+                // `dyn Type` shorthand for a single anonymous type parameter is
+                // accepted as well.
+                var tp = new TypeParameterSyntax { Name = "_" };
+                dyn.TypeParams.Add(tp);
             }
             dyn.Inner = ParseType();
             type = dyn;
@@ -1732,22 +1679,249 @@ public sealed class Parser
         return type;
     }
 
-    private List<string> ParseOptionalTypeParams()
+    private List<TypeParameterSyntax> ParseOptionalTypeParams() => ParseTypeParameters();
+
+    private List<TypeParameterSyntax> ParseTypeParameters()
     {
-        var list = new List<string>();
+        var list = new List<TypeParameterSyntax>();
         if (!Match(TokenKind.LBracket)) return list;
-        do
+        while (!Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
         {
-            if (Check(TokenKind.RBracket)) break;
-            list.Add(Consume(TokenKind.Identifier, "Expected type param").Text);
+            var tok = Consume(TokenKind.Identifier, "Expected type param");
+            var tp = new TypeParameterSyntax { Name = tok.Text };
             if (Match(TokenKind.Colon))
-            {
-                while (!Check(TokenKind.Comma) && !Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
-                    Advance();
-            }
-        } while (Match(TokenKind.Comma));
+                tp.Requirements = ParseTraitRequirementList();
+            list.Add(tp);
+            if (!Match(TokenKind.Comma)) break;
+        }
         Consume(TokenKind.RBracket, "Expected ']'");
         return list;
+    }
+
+    private List<TraitRequirementSyntax> ParseTraitRequirementList()
+    {
+        var list = new List<TraitRequirementSyntax>();
+        while (true)
+        {
+            var name = Consume(TokenKind.Identifier, "Expected trait name");
+            var req = new TraitRequirementSyntax { TraitName = name.Text };
+            if (Match(TokenKind.LBracket))
+            {
+                if (!Check(TokenKind.RBracket))
+                {
+                    do
+                    {
+                        req.Args.Add(ParseType());
+                        // Optional impl selection on a trait argument, e.g.
+                        // Foo[T: Bar[T]] in an impl header. It is validated later.
+                        if (Match(TokenKind.Colon))
+                            SkipImplSpec();
+                    } while (Match(TokenKind.Comma) && !Check(TokenKind.RBracket));
+                }
+                Consume(TokenKind.RBracket, "Expected ']'");
+            }
+            list.Add(req);
+            if (!Match(TokenKind.Comma)) break;
+            if (Check(TokenKind.RBracket) || Check(TokenKind.Eof)) break;
+        }
+        return list;
+    }
+
+    private void SkipImplSpec()
+    {
+        // Consume an impl name/trait application until the next argument or ']'.
+        Consume(TokenKind.Identifier, "Expected implementation name");
+        if (Match(TokenKind.LBracket))
+        {
+            int depth = 1;
+            while (depth > 0 && !Check(TokenKind.Eof))
+            {
+                if (Check(TokenKind.LBracket)) depth++;
+                else if (Check(TokenKind.RBracket)) depth--;
+                if (depth > 0) Advance();
+            }
+            Consume(TokenKind.RBracket, "Expected ']'");
+        }
+    }
+
+    private List<TraitArgSyntax> ParseTraitArgList()
+    {
+        var list = new List<TraitArgSyntax>();
+        if (!Match(TokenKind.LBracket)) return list;
+        while (!Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
+        {
+            var arg = new TraitArgSyntax { Type = ParseType() };
+            if (Match(TokenKind.Colon))
+            {
+                while (true)
+                {
+                    arg.Impls.Add(ParseImplRef());
+                    if (!Check(TokenKind.Comma)) break;
+                    // A comma followed by `Name :` starts the next trait argument.
+                    if (Peek(1).Kind == TokenKind.Identifier && Peek(2).Kind == TokenKind.Colon)
+                        break;
+                    // Otherwise it is another implementation for the same type.
+                    Advance();
+                    if (Check(TokenKind.RBracket)) break;
+                }
+            }
+            list.Add(arg);
+            if (!Match(TokenKind.Comma)) break;
+        }
+        Consume(TokenKind.RBracket, "Expected ']'");
+        return list;
+    }
+
+    private List<TypeArgumentSyntax> ParseTypeArguments()
+    {
+        var list = new List<TypeArgumentSyntax>();
+        Consume(TokenKind.LBracket, "Expected '['");
+        bool previousHadImpls = false;
+        while (!Check(TokenKind.RBracket) && !Check(TokenKind.Eof))
+        {
+            // Continuation impl for the preceding type argument:
+            // max[Vector: MaxByX, MinByX]
+            if (previousHadImpls
+                && Check(TokenKind.Identifier)
+                && Peek(1).Kind is TokenKind.Comma or TokenKind.RBracket)
+            {
+                list[^1].Impls.Add(ParseImplRef());
+            }
+            else
+            {
+                var item = new TypeArgumentSyntax { Type = ParseType() };
+                if (Match(TokenKind.Colon))
+                {
+                    while (true)
+                    {
+                        item.Impls.Add(ParseImplRef());
+                        if (!Check(TokenKind.Comma)) break;
+                        // New type argument starts with `Name :`.
+                        if (Peek(1).Kind == TokenKind.Identifier && Peek(2).Kind == TokenKind.Colon)
+                            break;
+                        // Bare names after an implementation list are additional
+                        // implementations unless the previous ref was a trait
+                        // application with explicit type arguments.
+                        if (Peek(1).Kind == TokenKind.Identifier
+                            && Peek(2).Kind is TokenKind.Comma or TokenKind.RBracket)
+                        {
+                            if (item.Impls[^1].HasExplicitArgs) break;
+                            Advance();
+                            continue;
+                        }
+                        break;
+                    }
+                }
+                list.Add(item);
+            }
+            previousHadImpls = list[^1].Impls.Count > 0;
+            if (!Match(TokenKind.Comma)) break;
+        }
+        Consume(TokenKind.RBracket, "Expected ']'");
+        return list;
+    }
+
+    private ImplRefSyntax ParseImplRef()
+    {
+        var name = Consume(TokenKind.Identifier, "Expected implementation or trait name");
+        var impl = new ImplRefSyntax { Name = name.Text };
+        if (Match(TokenKind.LBracket))
+        {
+            impl.HasExplicitArgs = true;
+            if (!Check(TokenKind.RBracket))
+            {
+                do
+                {
+                    impl.Args.Add(ParseType());
+                } while (Match(TokenKind.Comma) && !Check(TokenKind.RBracket));
+            }
+            Consume(TokenKind.RBracket, "Expected ']'");
+        }
+        return impl;
+    }
+
+    /// <summary>
+    /// Parses an optional <c>Trait::</c> or <c>Impl::</c> prefix on a member
+    /// declaration. The qualifier name is kept for later resolution.
+    /// </summary>
+    private string? TryParseMemberQualifier()
+    {
+        int saved = _pos;
+        if (!Check(TokenKind.Identifier) && !Check(TokenKind.Convert)) return null;
+        var name = Advance().Text;
+        if (Check(TokenKind.LBracket))
+        {
+            int depth = 0;
+            while (!Check(TokenKind.Eof))
+            {
+                if (Check(TokenKind.LBracket)) depth++;
+                else if (Check(TokenKind.RBracket)) depth--;
+                Advance();
+                if (depth == 0) break;
+            }
+        }
+        if (Match(TokenKind.ColonColon)) return name;
+        _pos = saved;
+        return null;
+    }
+
+    private bool LooksLikeBinaryOpHeader()
+    {
+        int depth = 0;
+        bool sawOperand = false;
+        for (int i = _pos; i < _tokens.Count; i++)
+        {
+            var kind = _tokens[i].Kind;
+            if (kind == TokenKind.Eof || kind == TokenKind.Semi) break;
+            if (depth == 0 && kind == TokenKind.LBrace) break;
+            if (depth == 0 && kind == TokenKind.Colon) break;
+
+            if (kind is TokenKind.LParen or TokenKind.LBracket or TokenKind.LBrace)
+            {
+                depth++;
+                continue;
+            }
+            if (kind is TokenKind.RParen or TokenKind.RBracket or TokenKind.RBrace)
+            {
+                depth--;
+                continue;
+            }
+            if (depth != 0) continue;
+
+            if (sawOperand && IsBinaryOpToken(kind)) return true;
+            if (kind is TokenKind.Identifier or TokenKind.IntLiteral or TokenKind.FloatLiteral
+                or TokenKind.StringLiteral or TokenKind.CharLiteral or TokenKind.True or TokenKind.False)
+                sawOperand = true;
+        }
+        return false;
+    }
+
+    private static bool IsBinaryOpToken(TokenKind kind) => kind is
+        TokenKind.Plus or TokenKind.Minus or TokenKind.Star or TokenKind.Slash or TokenKind.Percent
+        or TokenKind.Amp or TokenKind.Pipe or TokenKind.Caret or TokenKind.Lt or TokenKind.LtEq
+        or TokenKind.Gt or TokenKind.GtEq or TokenKind.EqEq or TokenKind.BangEq
+        or TokenKind.LtLt or TokenKind.GtGt or TokenKind.AmpAmp or TokenKind.PipePipe
+        or TokenKind.QuestionQuestion or TokenKind.PipeGt or TokenKind.DotDot or TokenKind.At
+        or TokenKind.Convert;
+
+    private bool LooksLikeDynWrap()
+    {
+        if (!Check(TokenKind.LBracket)) return false;
+        int depth = 0;
+        for (int i = _pos; i < _tokens.Count; i++)
+        {
+            var kind = _tokens[i].Kind;
+            if (kind == TokenKind.LBracket) depth++;
+            else if (kind == TokenKind.RBracket)
+            {
+                depth--;
+                if (depth == 0) return true;
+            }
+            else if (kind == TokenKind.Eof) return false;
+            else if (depth == 1 && kind is not (TokenKind.Identifier or TokenKind.Comma))
+                return false;
+        }
+        return false;
     }
 
     private bool CheckOpName()

@@ -82,7 +82,7 @@ printLine sum vectors;
 
 可以看出，Aoi 有些地方与其它语言不太相同，这些地方大多是因为水平不足为了减少编译复杂度（例如泛型使用中括号）。
 
-Aoi 也计划支持闭包、迭代器和 async / await 异步。解释器目前已支持闭包与管道等部分函数式特性，详见解释器说明。
+Aoi 也计划支持闭包、迭代器和 async / await 异步。解释器目前已支持闭包与管道等部分函数式特性，并已实现第 4 章的泛型、特征、泛型要求、带泛型的 impl 与 `dyn` 核心语义；架构说明见 [`interpreter/ARCHITECTURE.md`](/xiangyanhao/aoi-docs/blob/master/interpreter/ARCHITECTURE.md)，回归测试见 `interpreter/Aoi.Tests`。
 
 Aoi 语言将保持简单，因此砍掉了若干设想，并将许多功能使用更为简单但可能更损耗性能的实现。当然，有很大一部分原因是作者能力不足。
 
