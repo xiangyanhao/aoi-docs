@@ -5,6 +5,10 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aoi.Interpreter", "Aoi.Interpreter\Aoi.Interpreter.csproj", "{A326582E-E27D-40AE-922A-E2996B31AE3F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aoi.Core", "Aoi.Core\Aoi.Core.csproj", "{CA91DAFB-F5D8-47F4-B528-9EA2DF983E0C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aoi.Playground", "..\playground\Aoi.Playground\Aoi.Playground.csproj", "{22380329-BB32-43F7-AF59-2C93D94EAEB3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +22,13 @@ Global
 		{A326582E-E27D-40AE-922A-E2996B31AE3F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A326582E-E27D-40AE-922A-E2996B31AE3F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A326582E-E27D-40AE-922A-E2996B31AE3F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA91DAFB-F5D8-47F4-B528-9EA2DF983E0C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA91DAFB-F5D8-47F4-B528-9EA2DF983E0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA91DAFB-F5D8-47F4-B528-9EA2DF983E0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA91DAFB-F5D8-47F4-B528-9EA2DF983E0C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{22380329-BB32-43F7-AF59-2C93D94EAEB3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22380329-BB32-43F7-AF59-2C93D94EAEB3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22380329-BB32-43F7-AF59-2C93D94EAEB3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{22380329-BB32-43F7-AF59-2C93D94EAEB3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -527,11 +527,33 @@ public sealed class Interpreter
     private AoiValue ApplyJuxtaposedValue(Expr opExpr, AoiValue arg)
     {
         if (opExpr is IdentExpr id)
+        {
+            // Variable bound to a first-class operator (closure / curried op).
+            if (_env.TryGet(id.Name, out var bound) && bound is OperatorValue ov)
+                return ApplyUnary(ov, arg);
+
+            // Binary op with only the right operand: curry to unary `x => x op arg`
+            // (e.g. `map fn` used in `array |> map fn`).
+            var binary = _operators.LastOrDefault(o => o.Name == id.Name && o.IsBinary);
+            if (binary != null)
+            {
+                return new OperatorValue(id.Name, false, (interp, _, left) =>
+                    interp.InvokeUserOp(binary, left, arg));
+            }
             return CallUnaryOp(id.Name, arg);
+        }
         if (opExpr is GroupedOpExpr g)
             return ApplyUnary(MakeCurriedBinary(g.Op), arg);
         if (opExpr is QualifiedExpr q && q.Value == null)
+        {
+            var binary = _operators.LastOrDefault(o => o.Name == q.Member && o.IsBinary);
+            if (binary != null)
+            {
+                return new OperatorValue(q.Member, false, (interp, _, left) =>
+                    interp.InvokeUserOp(binary, left, arg));
+            }
             return CallUnaryOp(q.Member, arg);
+        }
 
         var opVal = Eval(opExpr);
         return ApplyUnary(opVal, arg);
@@ -540,6 +562,10 @@ public sealed class Interpreter
     private AoiValue LookupIdent(string name)
     {
         if (_env.TryGet(name, out var v) && v != null) return v;
+
+        // Builtins keep their special behavior when used as first-class ops (e.g. `|> printLine`).
+        if (name is "printLine" or "print" or "toStr")
+            return new OperatorValue(name, false, (interp, _, arg) => interp.CallUnaryOp(name, arg));
 
         // Operator as value
         var op = _operators.LastOrDefault(o => o.Name == name);

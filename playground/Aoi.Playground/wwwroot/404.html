@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Aoi Playground</title>
+  <script>
+    // GitHub Pages SPA fallback: send unknown paths back to index.
+    sessionStorage.redirect = location.href;
+    const base = document.querySelector('base')?.getAttribute('href') || '/';
+    location.replace(base);
+  </script>
+  <meta http-equiv="refresh" content="0;URL='./'" />
+</head>
+<body></body>
+</html>
