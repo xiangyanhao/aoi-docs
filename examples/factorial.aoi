@@ -1,0 +1,8 @@
+op fac x: int -> int {
+    if x == 0 then {
+        1
+    } else {
+        x * fac (x - 1)
+    }
+}
+printLine fac 10;

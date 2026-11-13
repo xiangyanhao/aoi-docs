@@ -1,0 +1,23 @@
+struct Vector {
+    x: float;
+    y: float;
+}
+op a + b: Vector <> Vector -> Vector {
+    new Vector {
+        x: a.x + b.x,
+        y: a.y + b.y
+    }
+}
+op sum array: arr[Vector] -> Vector {
+    let res = array.[0];
+    for i in 1..array.length do {
+        res = res + array.[i];
+    }
+    res
+}
+let vectors = new arr[Vector] {
+    new Vector { x: 1.0, y: 2.0 },
+    new Vector { x: 3.0, y: 4.0 },
+    new Vector { x: 5.0, y: 6.0 }
+};
+printLine sum vectors;
