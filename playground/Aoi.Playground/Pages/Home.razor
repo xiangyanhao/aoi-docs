@@ -3,6 +3,7 @@
 @using Aoi.Playground.Services
 @inject NavigationManager Nav
 @inject IJSRuntime Js
+@inject PlaygroundState State
 
 <PageTitle>Aoi Playground</PageTitle>
 
@@ -21,7 +22,7 @@
             <div class="sample-list">
                 @foreach (var sample in SampleCatalog.All)
                 {
-                    <button class="sample @(sample.Id == _activeSampleId ? "active" : null)"
+                    <button class="sample @(sample.Id == State.ActiveSampleId ? "active" : null)"
                             type="button"
                             @onclick="() => LoadSample(sample)">
                         <span class="sample-title">@sample.Title</span>
@@ -38,7 +39,7 @@
                     <h2>Source</h2>
                     <span class="meta">Ctrl/⌘ + Enter · drag handle to resize</span>
                 </div>
-                <CodeEditor Value="@_source"
+                <CodeEditor Value="@State.Source"
                             ValueChanged="OnSourceChanged"
                             OnRunRequested="RunAsync"
                             AriaLabel="Aoi source editor" />
@@ -49,22 +50,22 @@
             <section class="panel panel-output" style="animation-delay: 0.08s">
                 <div class="panel-head">
                     <h2>Output</h2>
-                    @if (_lastElapsedMs is long ms)
+                    @if (State.LastElapsedMs is long ms)
                     {
                         <span class="meta">@ms ms</span>
                     }
                 </div>
-                @if (!string.IsNullOrEmpty(_error))
+                @if (!string.IsNullOrEmpty(State.Error))
                 {
-                    <pre class="output error">@_error@(!string.IsNullOrEmpty(_output) ? "\n\n" + _output : "")</pre>
+                    <pre class="output error">@State.Error@(!string.IsNullOrEmpty(State.Output) ? "\n\n" + State.Output : "")</pre>
                 }
-                else if (string.IsNullOrEmpty(_output) && _lastElapsedMs is null)
+                else if (string.IsNullOrEmpty(State.Output) && State.LastElapsedMs is null)
                 {
                     <pre class="output empty">运行结果会出现在这里。</pre>
                 }
                 else
                 {
-                    <pre class="output">@(string.IsNullOrEmpty(_output) ? "(no output)" : _output)</pre>
+                    <pre class="output">@(string.IsNullOrEmpty(State.Output) ? "(no output)" : State.Output)</pre>
                 }
             </section>
         </div>
@@ -77,11 +78,6 @@
 }
 
 @code {
-    private string _source = SampleCatalog.Default.Source;
-    private string? _activeSampleId = SampleCatalog.Default.Id;
-    private string _output = "";
-    private string? _error;
-    private long? _lastElapsedMs;
     private bool _running;
     private string? _toast;
     private CancellationTokenSource? _toastCts;
@@ -91,16 +87,24 @@
 
     protected override void OnInitialized()
     {
+        // Apply #code= once per full page load (Edit / Share links).
+        if (State.HashApplied) return;
+
         var uri = Nav.ToAbsoluteUri(Nav.Uri);
         if (!string.IsNullOrEmpty(uri.Fragment) && uri.Fragment.StartsWith("#code="))
         {
             var decoded = ShareCodec.Decode(uri.Fragment["#code=".Length..]);
             if (!string.IsNullOrEmpty(decoded))
             {
-                _source = decoded;
-                _activeSampleId = null;
+                State.Source = decoded;
+                State.ActiveSampleId = null;
+                State.Output = "";
+                State.Error = null;
+                State.LastElapsedMs = null;
             }
         }
+
+        State.HashApplied = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -116,42 +120,42 @@
 
     private void OnSourceChanged(string value)
     {
-        _source = value;
-        _activeSampleId = null;
+        State.Source = value;
+        State.ActiveSampleId = null;
     }
 
     private void LoadSample(Sample sample)
     {
-        _source = sample.Source;
-        _activeSampleId = sample.Id;
-        _error = null;
+        State.Source = sample.Source;
+        State.ActiveSampleId = sample.Id;
+        State.Error = null;
     }
 
     private async Task RunAsync()
     {
         if (_running) return;
         _running = true;
-        _error = null;
+        State.Error = null;
         StateHasChanged();
 
         await Task.Yield();
-        var result = AoiRunner.Run(_source);
-        _output = result.Output;
-        _error = result.Error;
-        _lastElapsedMs = result.ElapsedMs;
+        var result = AoiRunner.Run(State.Source);
+        State.Output = result.Output;
+        State.Error = result.Error;
+        State.LastElapsedMs = result.ElapsedMs;
         _running = false;
     }
 
     private void ClearOutput()
     {
-        _output = "";
-        _error = null;
-        _lastElapsedMs = null;
+        State.Output = "";
+        State.Error = null;
+        State.LastElapsedMs = null;
     }
 
     private async Task ShareAsync()
     {
-        var payload = ShareCodec.Encode(_source);
+        var payload = ShareCodec.Encode(State.Source);
         var url = Nav.ToAbsoluteUri(Nav.BaseUri).GetLeftPart(UriPartial.Path).TrimEnd('/') + "/#code=" + payload;
         try
         {
