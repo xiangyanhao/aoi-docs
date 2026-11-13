@@ -14,6 +14,61 @@ public sealed class ProgramNode : AstNode
     public List<Stmt> Statements { get; set; } = new();
 }
 
+// --- Generic syntax ---
+
+/// <summary>
+/// A type parameter declaration, e.g. <c>T</c> or <c>T: Ord[T], ToStr[T]</c>.
+/// </summary>
+public sealed class TypeParameterSyntax : AstNode
+{
+    public required string Name { get; set; }
+    public List<TraitRequirementSyntax> Requirements { get; set; } = new();
+}
+
+/// <summary>
+/// A trait requirement such as <c>Ord[T]</c>. A bare trait name with no
+/// arguments (<c>T: Ord</c>) is also allowed; arguments are inferred later.
+/// </summary>
+public sealed class TraitRequirementSyntax : AstNode
+{
+    public required string TraitName { get; set; }
+    public List<TypeRef> Args { get; set; } = new();
+}
+
+/// <summary>
+/// A reference to a trait implementation, used in impl headers and in
+/// explicitly supplied generic arguments: <c>OrdByX</c> or
+/// <c>PartialOrdByX[Vector]</c>.
+/// </summary>
+public sealed class ImplRefSyntax : AstNode
+{
+    public required string Name { get; set; }
+    public List<TypeRef> Args { get; set; } = new();
+    /// <summary>True when <see cref="Args"/> was written; used to disambiguate trait refs.</summary>
+    public bool HasExplicitArgs { get; set; }
+}
+
+/// <summary>
+/// One item inside an explicit generic argument list, e.g. <c>int</c>,
+/// <c>int: Ord[int]</c>, <c>Vector: MaxByX, MinByX</c>.
+/// An item with no <see cref="Type"/> contributes additional implementation
+/// requirements to the preceding item.
+/// </summary>
+public sealed class TypeArgumentSyntax : AstNode
+{
+    public TypeRef? Type { get; set; }
+    public List<ImplRefSyntax> Impls { get; set; } = new();
+}
+
+/// <summary>
+/// A type argument in an impl header, e.g. <c>Vector: PartialOrdByX[Vector]</c>.
+/// </summary>
+public sealed class TraitArgSyntax : AstNode
+{
+    public required TypeRef Type { get; set; }
+    public List<ImplRefSyntax> Impls { get; set; } = new();
+}
+
 // --- Statements ---
 
 public sealed class ExprStmt : Stmt
@@ -77,7 +132,7 @@ public sealed class TryStmt : Stmt
 public sealed class StructDecl : Stmt
 {
     public required string Name { get; set; }
-    public List<string> TypeParams { get; set; } = new();
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public List<(string Name, TypeRef Type)> Fields { get; set; } = new();
     public bool IsClass { get; set; }
 }
@@ -91,7 +146,7 @@ public sealed class EnumDecl : Stmt
 public sealed class UnionDecl : Stmt
 {
     public required string Name { get; set; }
-    public List<string> TypeParams { get; set; } = new();
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public List<(string Name, TypeRef Type)> Cases { get; set; } = new();
 }
 
@@ -100,18 +155,22 @@ public sealed class OpDecl : Stmt
     public DeclPattern? Lhs { get; set; }
     public required string Name { get; set; }
     public DeclPattern? Rhs { get; set; }
-    public List<string> TypeParams { get; set; } = new();
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public TypeRef? LhsType { get; set; }
     public TypeRef? RhsType { get; set; }
     public TypeRef? ResultType { get; set; }
     public required Expr Body { get; set; }
+    /// <summary>True for trait member signatures ending in <c>;</c> (no default body).</summary>
+    public bool IsDeclarationOnly { get; set; }
+    /// <summary>Optional <c>Trait::</c> / <c>Impl::</c> prefix on a member declaration.</summary>
+    public string? Qualifier { get; set; }
     public bool IsBinary => Lhs != null;
 }
 
 public sealed class TraitDecl : Stmt
 {
     public required string Name { get; set; }
-    public List<string> TypeParams { get; set; } = new();
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public List<OpDecl> Members { get; set; } = new();
 }
 
@@ -119,8 +178,8 @@ public sealed class ImplDecl : Stmt
 {
     public string? Name { get; set; }
     public string? TraitName { get; set; }
-    public List<TypeRef> TraitArgs { get; set; } = new();
-    public List<string> TypeParams { get; set; } = new();
+    public List<TraitArgSyntax> TraitArgs { get; set; } = new();
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public List<OpDecl> Members { get; set; } = new();
     public string? AliasOf { get; set; }
 }
@@ -128,7 +187,7 @@ public sealed class ImplDecl : Stmt
 public sealed class TypeAliasDecl : Stmt
 {
     public required string Name { get; set; }
-    public List<string> TypeParams { get; set; } = new();
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public required TypeRef Definition { get; set; }
 }
 
@@ -136,6 +195,7 @@ public sealed class ConvertDecl : Stmt
 {
     public required bool Implicit { get; set; }
     public required DeclPattern Pattern { get; set; }
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public required TypeRef FromType { get; set; }
     public required TypeRef ToType { get; set; }
     public required Expr Body { get; set; }
@@ -146,6 +206,7 @@ public sealed class GetDecl : Stmt
     public required DeclPattern Self { get; set; }
     public string? PropertyName { get; set; }
     public DeclPattern? Index { get; set; }
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public TypeRef? SelfType { get; set; }
     public TypeRef? IndexType { get; set; }
     public TypeRef? ResultType { get; set; }
@@ -159,6 +220,7 @@ public sealed class SetDecl : Stmt
     public string? PropertyName { get; set; }
     public DeclPattern? Index { get; set; }
     public required DeclPattern Value { get; set; }
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public TypeRef? SelfType { get; set; }
     public TypeRef? IndexType { get; set; }
     public TypeRef? ValueType { get; set; }
@@ -170,6 +232,7 @@ public sealed class LiteralSuffixDecl : Stmt
 {
     public required DeclPattern Pattern { get; set; }
     public required string Suffix { get; set; }
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
     public required TypeRef ValueType { get; set; }
     public required TypeRef ResultType { get; set; }
     public required Expr Body { get; set; }
@@ -210,6 +273,8 @@ public sealed class TemplateExpr : Expr
 public sealed class IdentExpr : Expr
 {
     public required string Name { get; set; }
+    /// <summary>Explicit generic arguments, e.g. <c>max[int]</c> or <c>sum[Vector: OrdByX]</c>.</summary>
+    public List<TypeArgumentSyntax> TypeArguments { get; set; } = new();
 }
 
 public sealed class UnaryExpr : Expr
@@ -364,6 +429,8 @@ public sealed class QualifiedExpr : Expr
 {
     public required string TypeName { get; set; }
     public required string Member { get; set; }
+    /// <summary>Generic arguments on the qualifier, e.g. <c>VectorSpace[float, Vector]::*</c>.</summary>
+    public List<TypeArgumentSyntax> TypeArguments { get; set; } = new();
     public Expr? Value { get; set; }
 }
 
@@ -395,6 +462,23 @@ public sealed class LiteralSuffixExpr : Expr
 {
     public required Expr Value { get; set; }
     public required string Suffix { get; set; }
+}
+
+/// <summary>
+/// Explicit construction of a dynamic value: <c>value[Impl0, Impl1]</c>.
+/// When the implementation list is empty this is an implicit dyn conversion.
+/// </summary>
+public sealed class DynWrapExpr : Expr
+{
+    public required Expr Value { get; set; }
+    public List<ImplRefSyntax> Impls { get; set; } = new();
+}
+
+/// <summary>Projection of a type parameter from a dynamic value: <c>value::T</c>.</summary>
+public sealed class TypeProjectionExpr : Expr
+{
+    public required Expr Value { get; set; }
+    public required string Member { get; set; }
 }
 
 // --- Patterns ---
@@ -529,7 +613,7 @@ public sealed class OpTypeRef : TypeRef
 
 public sealed class DynTypeRef : TypeRef
 {
-    public List<string> TypeParams { get; set; } = new();
-    public List<TypeRef> Requirements { get; set; } = new();
+    public List<TypeParameterSyntax> TypeParams { get; set; } = new();
+    public List<TraitRequirementSyntax> Requirements { get; set; } = new();
     public required TypeRef Inner { get; set; }
 }

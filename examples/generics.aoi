@@ -1,0 +1,43 @@
+// 第 4 章：泛型类型、泛型运算符与带泛型的实现
+
+struct Vector[T: Add[T], Sub[T]] {
+    x: T;
+    y: T;
+}
+
+impl[T: Vector[T]] of Add[Vector[T]] {
+    op a + b {
+        new Vector {
+            x: a.x + b.x,
+            y: a.y + b.y
+        }
+    }
+}
+
+op sum[T: Add[T]] array: arr[T] -> T {
+    let res = array.[0];
+    for i in 1..array.length do {
+        res += array.[i];
+    }
+    res
+}
+
+let ints = new arr[int] { 1, 2, 3, 4 };
+printLine sum ints;
+
+let vectors = new arr[Vector[int]] {
+    new Vector[int] { x: 1, y: 2 },
+    new Vector[int] { x: 3, y: 4 }
+};
+printLine (sum vectors).x;
+printLine (sum vectors).y;
+
+struct Pair[A, B] {
+    first: A;
+    second: B;
+}
+
+// 类型实参可以从字段初始化器推导。
+let pair = new Pair { first: "aoi", second: 4 };
+printLine pair.first;
+printLine pair.second;

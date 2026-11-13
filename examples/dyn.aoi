@@ -1,0 +1,34 @@
+// 第 4 章：动态类型与虚表分派
+
+type DShow = dyn[T: ToStr[T]] T;
+
+op printAll array: arr[DShow] -> () {
+    for element in array do {
+        printLine toStr element;
+    }
+}
+
+let items = new arr[DShow] {
+    42,
+    "hello",
+    true
+};
+
+printAll items;
+
+// 具名实现的显式动态包装：a[ShowA]
+struct A {
+    value: int;
+}
+
+trait Show[T] {
+    op show x: T -> str;
+}
+
+impl ShowA of Show[A] {
+    op show x { `A({x.value})` }
+}
+
+let a = new A { value: 7 };
+let dynamic = a[ShowA];
+printLine (show dynamic);
