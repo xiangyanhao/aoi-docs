@@ -853,6 +853,15 @@ body.is-resizing textarea {
   color: var(--mist);
 }
 
+.doc-snippet-note {
+  font-size: 0.78rem;
+  color: var(--mist);
+}
+
+.doc-snippet.is-syntax {
+  opacity: 0.96;
+}
+
 .doc-snippet-actions {
   display: flex;
   gap: 0.35rem;

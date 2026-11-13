@@ -124,8 +124,22 @@ public sealed class StructValue : AoiValue
         return new StructValue(StructName,
             Fields.ToDictionary(kv => kv.Key, kv => kv.Value.Copy()), false);
     }
+    [ThreadStatic] private static HashSet<object>? _toStringSeen;
+
     public override string ToString()
-        => $"{StructName} {{ {string.Join(", ", Fields.Select(kv => $"{kv.Key}: {kv.Value}"))} }}";
+    {
+        _toStringSeen ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
+        if (!_toStringSeen.Add(this))
+            return $"{StructName} {{ ... }}";
+        try
+        {
+            return $"{StructName} {{ {string.Join(", ", Fields.Select(kv => $"{kv.Key}: {kv.Value}"))} }}";
+        }
+        finally
+        {
+            _toStringSeen.Remove(this);
+        }
+    }
 }
 
 public sealed class EnumValue : AoiValue

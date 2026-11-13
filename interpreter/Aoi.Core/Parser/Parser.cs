@@ -79,11 +79,53 @@ public sealed class Parser
         if (Match(TokenKind.For)) return ParseFor();
         if (Match(TokenKind.When)) return ParseWhenStmt();
         if (Match(TokenKind.Try)) return ParseTryStmt();
-        if (Check(TokenKind.LBrace)) return ParseBlockStmt();
+        if (Check(TokenKind.LBrace)) return ParseBlockStmtOrExpr();
 
         var expr = ParseExpression();
         Consume(TokenKind.Semi, "Expected ';' after expression");
         return Loc(new ExprStmt { Expression = expr }, expr);
+    }
+
+    /// <summary>
+    /// Top-level `{ ... }` may be a statement block or an expression block
+    /// (trailing expression without `;`), matching the language docs.
+    /// </summary>
+    private Stmt ParseBlockStmtOrExpr()
+    {
+        var tok = Consume(TokenKind.LBrace, "Expected '{'");
+        var stmts = new List<Stmt>();
+        Expr? result = null;
+        while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
+        {
+            if (Check(TokenKind.Let) || Check(TokenKind.If) || Check(TokenKind.Loop)
+                || Check(TokenKind.While) || Check(TokenKind.For) || Check(TokenKind.When)
+                || Check(TokenKind.Try) || Check(TokenKind.LBrace))
+            {
+                stmts.Add(ParseStatement());
+                continue;
+            }
+
+            var e = ParseExpression();
+            if (Match(TokenKind.Semi))
+                stmts.Add(new ExprStmt { Expression = e });
+            else
+            {
+                result = e;
+                break;
+            }
+        }
+        Consume(TokenKind.RBrace, "Expected '}'");
+
+        if (result != null)
+        {
+            var be = new BlockExpr { Result = result };
+            be.Statements.AddRange(stmts);
+            return Loc(new ExprStmt { Expression = Loc(be, tok) }, tok);
+        }
+
+        var block = new BlockStmt();
+        block.Statements.AddRange(stmts);
+        return Loc(block, tok);
     }
 
     private LetStmt ParseLet()
@@ -95,18 +137,25 @@ public sealed class Parser
             type = ParseType();
         Consume(TokenKind.Eq, "Expected '=' in let");
         var value = ParseExpression();
-        Consume(TokenKind.Semi, "Expected ';' after let");
+        // Allow omitting `;` when the initializer ends with `}` (common after `new` / blocks).
+        if (!Match(TokenKind.Semi) && Previous().Kind != TokenKind.RBrace)
+            Consume(TokenKind.Semi, "Expected ';' after let");
         return Loc(new LetStmt { Pattern = pattern, Type = type, Value = value }, tok);
     }
 
     private BlockStmt ParseBlockStmt()
     {
-        var tok = Consume(TokenKind.LBrace, "Expected '{'");
-        var block = new BlockStmt();
-        while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
-            block.Statements.Add(ParseStatement());
-        Consume(TokenKind.RBrace, "Expected '}'");
-        return Loc(block, tok);
+        // Used where only a statement is allowed (if/loop bodies, etc.).
+        var stmt = ParseBlockStmtOrExpr();
+        if (stmt is BlockStmt block) return block;
+        // Expression block used as a statement: evaluate and discard.
+        if (stmt is ExprStmt es)
+        {
+            var b = new BlockStmt();
+            b.Statements.Add(es);
+            return Loc(b, es);
+        }
+        throw new AoiException("Expected block statement", stmt.Line, stmt.Column);
     }
 
     private IfStmt ParseIfStmt()
@@ -710,6 +759,12 @@ public sealed class Parser
         var parts = new List<Expr> { left };
         while (CanStartJuxtaposed())
         {
+            // If a `new`/`block` just closed with `}` and the next tokens look like a new
+            // statement (`ident.` / `ident =`), stop — a missing ';' must not swallow it.
+            if (Previous().Kind == TokenKind.RBrace
+                && Check(TokenKind.Identifier)
+                && Peek(1).Kind is TokenKind.Dot or TokenKind.Eq or TokenKind.LBrace)
+                break;
             parts.Add(ParseUnary());
         }
 
@@ -795,6 +850,12 @@ public sealed class Parser
     private string? CurrentBinaryOp()
     {
         var t = Peek();
+        // `+=` `-=` `*=` `/=` `%=` are compound assignments, not binary ops.
+        if (t.Kind is TokenKind.Plus or TokenKind.Minus or TokenKind.Star
+            or TokenKind.Slash or TokenKind.Percent
+            && Peek(1).Kind == TokenKind.Eq)
+            return null;
+
         return t.Kind switch
         {
             TokenKind.Plus => "+",
@@ -1478,11 +1539,13 @@ public sealed class Parser
                 return new TypeMatchPattern { Type = new NamedTypeRef { Name = name }, Binding = binding };
             }
 
-            // Could be unary op name standing alone
+            // Could be unary op name standing alone, or a type/exception name (PascalCase).
             if (Check(TokenKind.Then) || Check(TokenKind.And) || Check(TokenKind.Or)
                 || Check(TokenKind.Xor) || Check(TokenKind.RBrace) || Check(TokenKind.Comma)
                 || Check(TokenKind.RParen) || Check(TokenKind.Eof) || Check(TokenKind.Semi))
             {
+                if (name.Length > 0 && char.IsUpper(name[0]))
+                    return new UnionMatchPattern { Condition = name };
                 return new UnaryOpMatchPattern { Op = name };
             }
 
