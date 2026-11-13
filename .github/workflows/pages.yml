@@ -40,7 +40,26 @@ jobs:
           fi
           echo "Using base href: ${BASE_HREF}"
           sed -i "s|<base href=\"/\" />|<base href=\"${BASE_HREF}\" />|" playground/Aoi.Playground/wwwroot/index.html
-          dotnet publish playground/Aoi.Playground/Aoi.Playground.csproj -c Release -o publish
+          dotnet publish playground/Aoi.Playground/Aoi.Playground.csproj -c Release -o publish \
+            -p:StaticWebAssetFingerprintingEnabled=false \
+            -p:StaticWebAssetsFingerprintContent=false
+
+          echo "Published index.html:"
+          cat publish/wwwroot/index.html
+          echo "Blazor boot scripts:"
+          ls -la publish/wwwroot/_framework/blazor.webassembly* || true
+
+          # Guard against fingerprint mismatch (index.html vs _framework file name).
+          if ! test -f publish/wwwroot/_framework/blazor.webassembly.js; then
+            echo "::error::Expected publish/wwwroot/_framework/blazor.webassembly.js"
+            ls publish/wwwroot/_framework | head -50
+            exit 1
+          fi
+          if ! grep -q '_framework/blazor.webassembly.js' publish/wwwroot/index.html; then
+            echo "::error::index.html does not reference _framework/blazor.webassembly.js"
+            exit 1
+          fi
+
           # Ensure Pages ignores Jekyll processing
           touch publish/wwwroot/.nojekyll
           # Keep a 404 fallback for client routes
