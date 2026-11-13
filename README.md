@@ -4,6 +4,8 @@
 
 > **关于本仓库**  
 > 语言设计文档原作者为 [rinsoko39](https://github.com/rinsoko39/aoi-docs)。本仓库是 fork，由 Yanhao Xiang 借助 Cursor 补上了解释器与相关说明。**暂时请勿将本 fork 的解释器改动提交到上游文档仓库。**
+>
+> 下文中的所有“作者”指的是上游仓库原作者（[rinsoko39](https://github.com/rinsoko39/aoi-docs)）。下文《你和她和她的恋爱。》亦为上游仓库原作者撰写，不代表 fork 项目的情感倾向立场。
 
 欢迎对文档提 issues；作者表达能力有所欠缺，如有可改进的地方或明显错误，欢迎在本 fork 提交 pull requests。
 
