@@ -62,12 +62,22 @@ public sealed class Parser
 
     private bool LookAheadIsDeclSet()
     {
-        // set self.prop = ...  or set self.[index] = ...
+        // Decl: set self.prop = … / set self.[i] = …
+        // Expr: set instance { … }  — brace without a preceding '.' is an expression.
         if (!Check(TokenKind.Set)) return false;
         int i = _pos + 1;
-        if (i >= _tokens.Count) return false;
-        // heuristic: declaration starts with identifier (self pattern)
-        return _tokens[i].Kind is TokenKind.Identifier or TokenKind.LParen or TokenKind.LBrace;
+        int depth = 0;
+        while (i < _tokens.Count)
+        {
+            var k = _tokens[i].Kind;
+            if (k == TokenKind.Eof || k == TokenKind.Semi) return false;
+            if (depth == 0 && k == TokenKind.LBrace) return false;
+            if (depth == 0 && k == TokenKind.Dot) return true;
+            if (k is TokenKind.LParen or TokenKind.LBrace or TokenKind.LBracket) depth++;
+            else if (k is TokenKind.RParen or TokenKind.RBrace or TokenKind.RBracket) depth--;
+            i++;
+        }
+        return false;
     }
 
     private Stmt ParseStatement()
@@ -714,10 +724,18 @@ public sealed class Parser
     private Expr ParseAssignment()
     {
         var expr = ParseIsExpr();
+
+        // Infix set: instance set { field: value, ... }
+        if (Check(TokenKind.Set) && Peek(1).Kind == TokenKind.LBrace)
+        {
+            Advance(); // set
+            return ParseSetExprBody(expr);
+        }
+
         if (Match(TokenKind.Eq))
         {
             var value = ParseAssignment();
-            return new AssignExpr { Pattern = new ExprAssignPattern { Target = expr }, Value = value };
+            return new AssignExpr { Pattern = ExprToAssignPattern(expr), Value = value };
         }
         if (Match(TokenKind.QuestionQuestionEq))
         {
@@ -737,6 +755,59 @@ public sealed class Parser
             }
         }
         return expr;
+    }
+
+    private static AssignPattern ExprToAssignPattern(Expr expr) => expr switch
+    {
+        TupleExpr t => new TupleAssignPattern
+        {
+            Elements = t.Elements.Select(e => (AssignPattern?)ExprToAssignPattern(e)).ToList(),
+            Line = t.Line,
+            Column = t.Column,
+        },
+        _ => new ExprAssignPattern { Target = expr, Line = expr.Line, Column = expr.Column },
+    };
+
+    private Expr ParseSetExprBody(Expr target)
+    {
+        Consume(TokenKind.LBrace, "Expected '{'");
+        var elements = ParseInitializerElements();
+        Consume(TokenKind.RBrace, "Expected '}'");
+        return new SetExpr
+        {
+            Target = target,
+            Elements = elements,
+            Line = target.Line,
+            Column = target.Column,
+        };
+    }
+
+    private List<(string? Name, Expr Value, Expr? Repeat, Expr? Index)> ParseInitializerElements()
+    {
+        var elements = new List<(string? Name, Expr Value, Expr? Repeat, Expr? Index)>();
+        while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
+        {
+            string? fieldName = null;
+            Expr? index = null;
+            if (Match(TokenKind.LBracket))
+            {
+                index = ParseExpression();
+                Consume(TokenKind.RBracket, "Expected ']'");
+                Consume(TokenKind.Colon, "Expected ':'");
+            }
+            else if (Check(TokenKind.Identifier) && Peek(1).Kind == TokenKind.Colon)
+            {
+                fieldName = Advance().Text;
+                Advance(); // :
+            }
+            var value = ParseExpression();
+            Expr? repeat = null;
+            if (Match(TokenKind.Semi) && !Check(TokenKind.RBrace) && !Check(TokenKind.Comma))
+                repeat = ParseExpression();
+            elements.Add((fieldName, value, repeat, index));
+            Match(TokenKind.Comma);
+        }
+        return elements;
     }
 
     private Expr ParseIsExpr()
@@ -826,7 +897,8 @@ public sealed class Parser
            || Check(TokenKind.LParen)
            || Check(TokenKind.New) || Check(TokenKind.Some) || Check(TokenKind.None)
            || Check(TokenKind.Unset) || Check(TokenKind.Break) || Check(TokenKind.Continue)
-           || Check(TokenKind.Return) || Check(TokenKind.Throw);
+           || Check(TokenKind.Return) || Check(TokenKind.Throw)
+           || Check(TokenKind.Convert);
     }
 
     private bool CanStartPrimary()
@@ -837,7 +909,8 @@ public sealed class Parser
            || Check(TokenKind.New) || Check(TokenKind.Some) || Check(TokenKind.None)
            || Check(TokenKind.Unset) || Check(TokenKind.If) || Check(TokenKind.When)
            || Check(TokenKind.Try) || Check(TokenKind.Break) || Check(TokenKind.Continue)
-           || Check(TokenKind.Return) || Check(TokenKind.Throw);
+           || Check(TokenKind.Return) || Check(TokenKind.Throw)
+           || Check(TokenKind.Convert) || Check(TokenKind.Set);
 
     private static string ExtractOpName(Expr e) => e switch
     {
@@ -934,6 +1007,11 @@ public sealed class Parser
                         Consume(TokenKind.RBracket, "Expected ']'");
                         expr = new SafeIndexExpr { Object = expr, Index = index };
                     }
+                    else if (Check(TokenKind.IntLiteral))
+                    {
+                        var n = Advance().Text;
+                        expr = new SafeMemberExpr { Object = expr, Member = n };
+                    }
                     else
                     {
                         var name = Consume(TokenKind.Identifier, "Expected member").Text;
@@ -962,22 +1040,40 @@ public sealed class Parser
         if (Match(TokenKind.IntLiteral))
         {
             var tok = Previous();
-            return Loc(new IntExpr { Value = ParseIntLiteral(tok) }, tok);
+            return MaybeLiteralSuffix(Loc(new IntExpr { Value = ParseIntLiteral(tok) }, tok), tok);
         }
         if (Match(TokenKind.FloatLiteral))
         {
             var tok = Previous();
-            return Loc(new FloatExpr { Value = double.Parse(tok.Text, System.Globalization.CultureInfo.InvariantCulture) }, tok);
+            return MaybeLiteralSuffix(
+                Loc(new FloatExpr { Value = double.Parse(tok.Text, System.Globalization.CultureInfo.InvariantCulture) }, tok),
+                tok);
         }
         if (Match(TokenKind.StringLiteral))
-            return Loc(new StringExpr { Value = Previous().Text }, Previous());
+        {
+            var tok = Previous();
+            return MaybeLiteralSuffix(Loc(new StringExpr { Value = tok.Text }, tok), tok);
+        }
         if (Match(TokenKind.TemplateString))
             return Loc(new TemplateExpr { Raw = Previous().Text }, Previous());
         if (Match(TokenKind.CharLiteral))
-            return Loc(new CharExpr { Value = Previous().Text[0] }, Previous());
+        {
+            var tok = Previous();
+            return MaybeLiteralSuffix(Loc(new CharExpr { Value = tok.Text[0] }, tok), tok);
+        }
         if (Match(TokenKind.True)) return Loc(new BoolExpr { Value = true }, Previous());
         if (Match(TokenKind.False)) return Loc(new BoolExpr { Value = false }, Previous());
         if (Match(TokenKind.Unset)) return Loc(new UnsetExpr(), Previous());
+        if (Match(TokenKind.Convert))
+            return Loc(new IdentExpr { Name = "convert" }, Previous());
+        // Prefix set: set instance { ... }
+        if (Match(TokenKind.Set))
+        {
+            var target = ParseUnary();
+            if (!Check(TokenKind.LBrace))
+                throw new AoiException("Expected '{' after set target", Peek().Line, Peek().Column);
+            return ParseSetExprBody(target);
+        }
         if (Match(TokenKind.None))
         {
             // none () or just none
@@ -1214,30 +1310,19 @@ public sealed class Parser
         var type = ParseType();
         Consume(TokenKind.LBrace, "Expected '{'");
         var expr = new NewExpr { Type = type, IsArray = type is NamedTypeRef n && n.Name == "arr" };
-        while (!Check(TokenKind.RBrace) && !Check(TokenKind.Eof))
-        {
-            string? fieldName = null;
-            Expr? index = null;
-            if (Match(TokenKind.LBracket))
-            {
-                index = ParseExpression();
-                Consume(TokenKind.RBracket, "Expected ']'");
-                Consume(TokenKind.Colon, "Expected ':'");
-            }
-            else if (Check(TokenKind.Identifier) && Peek(1).Kind == TokenKind.Colon)
-            {
-                fieldName = Advance().Text;
-                Advance(); // :
-            }
-            var value = ParseExpression();
-            Expr? repeat = null;
-            if (Match(TokenKind.Semi) && !Check(TokenKind.RBrace) && !Check(TokenKind.Comma))
-                repeat = ParseExpression();
-            expr.Elements.Add((fieldName, value, repeat, index));
-            Match(TokenKind.Comma);
-        }
+        expr.Elements.AddRange(ParseInitializerElements());
         Consume(TokenKind.RBrace, "Expected '}'");
         return Loc(expr, tok);
+    }
+
+    private Expr MaybeLiteralSuffix(Expr lit, Token litTok)
+    {
+        if (!Check(TokenKind.Identifier)) return lit;
+        var suf = Peek();
+        if (suf.Line != litTok.Line) return lit;
+        if (litTok.Column + litTok.Text.Length != suf.Column) return lit;
+        Advance();
+        return Loc(new LiteralSuffixExpr { Value = lit, Suffix = suf.Text }, litTok);
     }
 
     private Expr ParseIfExpr()
@@ -1677,6 +1762,8 @@ public sealed class Parser
     private string ConsumeOpName()
     {
         if (Check(TokenKind.Identifier)) return Advance().Text;
+        // Contextual: `convert` may be an operator name (ch.3.5).
+        if (Check(TokenKind.Convert)) { Advance(); return "convert"; }
         if (CurrentBinaryOp() != null) { var op = CurrentBinaryOp()!; Advance(); return op; }
         if (Check(TokenKind.Plus) || Check(TokenKind.Minus) || Check(TokenKind.Bang) || Check(TokenKind.Tilde) || Check(TokenKind.At))
             return Advance().Text;
@@ -1686,6 +1773,7 @@ public sealed class Parser
     private string ConsumeOpNameOrIdent()
     {
         if (Check(TokenKind.Identifier)) return Advance().Text;
+        if (Check(TokenKind.Convert)) { Advance(); return "convert"; }
         if (CurrentBinaryOp() != null) { var op = CurrentBinaryOp()!; Advance(); return op; }
         if (Check(TokenKind.Star) || Check(TokenKind.Plus) || Check(TokenKind.Minus) || Check(TokenKind.Lt))
             return Advance().Text;

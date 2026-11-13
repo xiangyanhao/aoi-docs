@@ -1,0 +1,45 @@
+// Properties, literal suffixes, set expressions, convert juxta, tuple swap
+
+class Box {
+    _v: int;
+}
+get self.value: Box -> int { self._v }
+set self.value = v: Box <- int { self._v = v; self }
+
+struct Complex {
+    real: float;
+    imag: float;
+}
+literal value i: float -> Complex {
+    new Complex { real: 0.0, imag: value }
+}
+
+op array convert converter: arr[int] <> (int -> int) -> arr[int] {
+    for i in 0..array.length do {
+        array.[i] = converter array.[i];
+    }
+    array
+}
+
+let b = new Box { _v: 1 };
+b.value = 9;
+printLine b.value;
+
+let c = 2.0i;
+printLine c.imag;
+
+let a = 1;
+let d = 2;
+(a, d) = (d, a);
+printLine a;
+printLine d;
+
+let arr = new arr[int] { 1, 2, 3 };
+set arr { [0]: 10 };
+arr convert (x => x + 1);
+printLine arr.[0];
+
+let add = (x <> y => x + y);
+printLine 3 add 4;
+
+printLine "aoi".[1];

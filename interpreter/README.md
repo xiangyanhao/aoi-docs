@@ -48,6 +48,7 @@ dotnet run --project Aoi.Interpreter -- -i
 | `factorial.aoi` | 自定义一元运算符与递归 |
 | `control_flow.aoi` | `when` / `for` / 可空模式匹配 |
 | `vector_sum.aoi` | 结构体、自定义 `+`、数组求和 |
+| `properties_literals.aoi` | 属性 / 字面量后缀 / `set` / `convert` 并列 / 元组交换 |
 
 ## 当前支持范围
 
@@ -55,11 +56,16 @@ dotnet run --project Aoi.Interpreter -- -i
 
 - 基础类型：`int` `float` `bool` `char` `str`、元组、数组、`Range`、可空类型
 - 自定义 `struct` / `class` / `enum` / `union`
-- 变量、赋值、基础解构
+- 变量、赋值、元组解构赋值（如 `(a, b) = (b, a)`）
 - 控制流：`if` / `loop` / `while` / `for` / `when` / `break` / `continue`
 - 一元 / 二元自定义运算符、`return`
+- 属性 `get` / `set`、索引属性 `get/set self.[i]`（含值类型属性嵌套写回）
+- 字面量后缀（`literal`，如 `2.0i`）
+- `set` 表达式（`set arr { … }` / `instance set { … }`）
 - 基础模式匹配（`is`、`if is`、`when`、`some`/`none`）
-- 闭包、管道 `|>`、运算符柯里化（如 `(+) 42`）
+- 闭包、管道 `|>`、运算符柯里化（如 `(+) 42`）、环境中的二元闭包并列调用（`1 add 2`）
+- `convert` 可作为运算符名用于并列 / 管道（非泛型）
+- `?.0` 等安全元组成员、`str.[i]` 字符索引
 - `try` / `catch` / `throw`（基础）
 - `impl` 中的运算符定义（特征系统为简化实现）
 - 内置 `printLine` / `print` / `toStr`
@@ -68,9 +74,8 @@ dotnet run --project Aoi.Interpreter -- -i
 
 **尚未完整实现或仅部分支持：**
 
-- 完整的特征约束求解、`dyn` 动态类型与虚表分派
-- 属性 getter/setter、索引属性的完整语义
-- 字面量后缀、全部类型转换规则
+- 完整的特征约束求解、`dyn` 动态类型与虚表分派、泛型参数（第 4 章）
+- 对象字面量形式的赋值解构（`{ a, [2]: b } = …`）
 - 静态类型检查（当前为动态求值）
 
 语言设计仍以仓库中的章节文档为准；解释器会逐步向文档靠拢。
