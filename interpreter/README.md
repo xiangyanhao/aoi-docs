@@ -80,7 +80,7 @@ dotnet run --project Aoi.Tests/Aoi.Tests.csproj
 - `?.0` 等安全元组成员、`str.[i]` 字符索引
 - `try` / `catch` / `throw`（基础）
 - 内置 `printLine` / `print` / `toStr`
-- 运行时防护：`int` 加减乘（及部分除）溢出报错；调用深度上限（默认 1 024）、求值步数上限（默认 5 000 万），并用 `EnsureSufficientExecutionStack` 把递归栈溢出转成可捕获错误；playground 使用更紧的限额
+- 运行时防护：`int` 加减乘（及部分除）溢出报错；调用深度上限（默认 1 024）、求值步数上限（默认 5 000 万）、可选墙钟超时（`MaxExecutionMilliseconds`），并用 `EnsureSufficientExecutionStack` 把递归栈溢出转成可捕获错误；playground 使用更紧的限额（浅调用深度 + 超时），避免 Blazor WASM 原生栈溢出导致页面崩溃
 - 复合赋值 `+=`/`-=`/`*=`/`/=`/`%=`、顶层表达式块、`for () in …` 丢弃绑定、以及 `printLine x op y` 形式的并列调用
 
 **第 4 章（已支持核心语义）：**

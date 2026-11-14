@@ -11,11 +11,15 @@ public sealed record RunResult(string Output, string? Error, long ElapsedMs);
 
 public static class AoiRunner
 {
-    /// <summary>Playground-oriented limits so runaway code cannot freeze the browser tab.</summary>
+    /// <summary>
+    /// Playground-oriented limits so runaway code cannot freeze or crash the browser tab.
+    /// Blazor WASM has a shallow native stack; keep MaxCallDepth well below what desktop CLR allows.
+    /// </summary>
     public static InterpreterOptions PlaygroundOptions { get; } = new()
     {
-        MaxCallDepth = 512,
-        MaxSteps = 2_000_000,
+        MaxCallDepth = 48,
+        MaxSteps = 200_000,
+        MaxExecutionMilliseconds = 1_500,
     };
 
     public static RunResult Run(string source)

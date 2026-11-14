@@ -26,8 +26,9 @@ internal static class Program
                 var program = new Parser(tokens).ParseProgram();
                 new AoiRuntime(writer, new InterpreterOptions
                 {
-                    MaxSteps = 2_000_000,
-                    MaxCallDepth = 512,
+                    MaxSteps = 200_000,
+                    MaxCallDepth = 48,
+                    MaxExecutionMilliseconds = 1_500,
                 }).Execute(program);
             }
             catch (AoiThrowException ex)
@@ -307,23 +308,30 @@ internal static class Program
 
             new("factorial_ok", """
                 op fac x: int -> int {
-                    if x == 0 then 1 else x * fac (x - 1)
+                    if x <= 1 then 1 else x * fac (x - 1)
                 }
                 printLine fac 10;
                 """, "3628800"),
 
             new("factorial_overflow", """
                 op fac x: int -> int {
-                    if x == 0 then 1 else x * fac (x - 1)
+                    if x <= 1 then 1 else x * fac (x - 1)
                 }
                 printLine fac 21;
                 """, "", "Integer overflow"),
 
             new("factorial_deep_recursion", """
                 op fac x: int -> int {
-                    if x == 0 then 1 else x * fac (x - 1)
+                    if x <= 1 then 1 else x * fac (x - 1)
                 }
                 printLine fac 10000;
+                """, "", "Stack overflow"),
+
+            new("factorial_huge_input", """
+                op fac x: int -> int {
+                    if x <= 1 then 1 else x * fac (x - 1)
+                }
+                printLine fac 1000000;
                 """, "", "Stack overflow"),
         };
     }

@@ -16,15 +16,17 @@ public static class SampleCatalog
         new(
             "factorial",
             "Factorial",
-            "一元运算符与递归。`int` 溢出或递归过深会报错。",
+            "一元运算符与递归。过大输入会溢出或触及运行限额。",
             """
             op fac x: int -> int {
-                if x == 0 then {
+                if x <= 1 then {
                     1
                 } else {
                     x * fac (x - 1)
                 }
             }
+            // 试着改大数字：超过 20 会 Integer overflow；
+            // 再大则会触及调用深度 / 步数 / 时间限额（不再拖垮页面）。
             printLine fac 10;
             """),
         new(
