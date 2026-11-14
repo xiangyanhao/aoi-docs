@@ -703,7 +703,7 @@ public sealed class Interpreter
         }
     }
 
-    private AoiValue InvokeBuiltinUnary(string name, AoiValue operand)
+    private AoiValue InvokeBuiltinUnary(string name, AoiValue operand, int line = 0, int column = 0)
     {
         if (name == "printLine")
         {
@@ -720,7 +720,7 @@ public sealed class Interpreter
         switch (name)
         {
             case "+" when operand is IntValue or FloatValue: return operand;
-            case "-" when operand is IntValue i: return new IntValue(-i.Value);
+            case "-" when operand is IntValue i: return new IntValue(CheckedNegate(i.Value, line, column));
             case "-" when operand is FloatValue f: return new FloatValue(-f.Value);
             case "!" when operand is BoolValue b: return new BoolValue(!b.Value);
             case "~" when operand is IntValue i: return new IntValue(~i.Value);
@@ -729,10 +729,34 @@ public sealed class Interpreter
         throw new AoiException($"Unknown builtin unary '{name}'");
     }
 
+    private static long CheckedAdd(long a, long b, int line, int column)
+    {
+        try { return checked(a + b); }
+        catch (OverflowException) { throw new AoiException("Integer overflow.", line, column); }
+    }
+
+    private static long CheckedSub(long a, long b, int line, int column)
+    {
+        try { return checked(a - b); }
+        catch (OverflowException) { throw new AoiException("Integer overflow.", line, column); }
+    }
+
+    private static long CheckedMul(long a, long b, int line, int column)
+    {
+        try { return checked(a * b); }
+        catch (OverflowException) { throw new AoiException("Integer overflow.", line, column); }
+    }
+
+    private static long CheckedNegate(long a, int line, int column)
+    {
+        try { return checked(-a); }
+        catch (OverflowException) { throw new AoiException("Integer overflow.", line, column); }
+    }
+
     private AoiValue InvokeBuiltin(string name, bool binary, AoiValue? left, AoiValue right, AoiValue? index, int line, int column)
     {
         if (!binary)
-            return InvokeBuiltinUnary(name, right);
+            return InvokeBuiltinUnary(name, right, line, column);
 
         if (left == null) throw new AoiException($"Binary operator '{name}' requires two operands", line, column);
 
@@ -740,25 +764,30 @@ public sealed class Interpreter
         {
             case "==": return new BoolValue(EqualsValue(left, right));
             case "!=": return new BoolValue(!EqualsValue(left, right));
-            case "+" when left is IntValue li && right is IntValue ri: return new IntValue(li.Value + ri.Value);
+            case "+" when left is IntValue li && right is IntValue ri:
+                return new IntValue(CheckedAdd(li.Value, ri.Value, line, column));
             case "+" when left is FloatValue lf && right is FloatValue rf: return new FloatValue(lf.Value + rf.Value);
             case "+" when left is IntValue li2 && right is FloatValue rf2: return new FloatValue(li2.Value + rf2.Value);
             case "+" when left is FloatValue lf2 && right is IntValue ri2: return new FloatValue(lf2.Value + ri2.Value);
             case "+" when left is StrValue ls && right is StrValue rs: return new StrValue(ls.Value + rs.Value);
             case "+" when left is StrValue ls2 && right is CharValue rc: return new StrValue(ls2.Value + rc.Value);
             case "+" when left is CharValue lc && right is IntValue ri3: return new CharValue((char)(lc.Value + ri3.Value));
-            case "-" when left is IntValue li && right is IntValue ri: return new IntValue(li.Value - ri.Value);
+            case "-" when left is IntValue li && right is IntValue ri:
+                return new IntValue(CheckedSub(li.Value, ri.Value, line, column));
             case "-" when left is FloatValue lf && right is FloatValue rf: return new FloatValue(lf.Value - rf.Value);
             case "-" when left is IntValue li2 && right is FloatValue rf2: return new FloatValue(li2.Value - rf2.Value);
             case "-" when left is FloatValue lf2 && right is IntValue ri2: return new FloatValue(lf2.Value - ri2.Value);
             case "-" when left is CharValue lc && right is IntValue ri3: return new CharValue((char)(lc.Value - ri3.Value));
-            case "*" when left is IntValue li && right is IntValue ri: return new IntValue(li.Value * ri.Value);
+            case "*" when left is IntValue li && right is IntValue ri:
+                return new IntValue(CheckedMul(li.Value, ri.Value, line, column));
             case "*" when left is FloatValue lf && right is FloatValue rf: return new FloatValue(lf.Value * rf.Value);
             case "*" when left is IntValue li2 && right is FloatValue rf2: return new FloatValue(li2.Value * rf2.Value);
             case "*" when left is FloatValue lf2 && right is IntValue ri2: return new FloatValue(lf2.Value * ri2.Value);
             case "/" when left is IntValue li && right is IntValue ri:
                 if (ri.Value == 0) throw new AoiException("Division by zero", line, column);
-                return new IntValue(li.Value / ri.Value);
+                // long.MinValue / -1 overflows
+                try { return new IntValue(checked(li.Value / ri.Value)); }
+                catch (OverflowException) { throw new AoiException("Integer overflow.", line, column); }
             case "/" when left is FloatValue lf && right is FloatValue rf: return new FloatValue(lf.Value / rf.Value);
             case "/" when left is IntValue li2 && right is FloatValue rf2: return new FloatValue(li2.Value / rf2.Value);
             case "/" when left is FloatValue lf2 && right is IntValue ri2: return new FloatValue(lf2.Value / ri2.Value);

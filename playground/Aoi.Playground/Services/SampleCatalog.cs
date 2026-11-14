@@ -16,7 +16,7 @@ public static class SampleCatalog
         new(
             "factorial",
             "Factorial",
-            "一元运算符与递归。",
+            "一元运算符与递归。`int` 溢出或递归过深会报错。",
             """
             op fac x: int -> int {
                 if x == 0 then {
