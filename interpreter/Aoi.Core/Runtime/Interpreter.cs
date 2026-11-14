@@ -11,6 +11,8 @@ public sealed class InterpreterOptions
 {
     public int MaxCallDepth { get; init; } = 1_024;
     public long MaxSteps { get; init; } = 50_000_000;
+    /// <summary>Wall-clock budget in milliseconds. 0 disables the limit.</summary>
+    public int MaxExecutionMilliseconds { get; init; } = 0;
 }
 
 public sealed class Interpreter
@@ -21,8 +23,10 @@ public sealed class Interpreter
     private readonly TextWriter _output;
     private readonly int _maxCallDepth;
     private readonly long _maxSteps;
+    private readonly int _maxExecutionMilliseconds;
     private int _callDepth;
     private long _steps;
+    private long _deadlineTicks;
 
     public SemanticModel Model => _model;
 
@@ -32,6 +36,7 @@ public sealed class Interpreter
         options ??= new InterpreterOptions();
         _maxCallDepth = Math.Max(1, options.MaxCallDepth);
         _maxSteps = Math.Max(1, options.MaxSteps);
+        _maxExecutionMilliseconds = Math.Max(0, options.MaxExecutionMilliseconds);
         _resolver = new OperatorResolver(_model);
     }
 
@@ -39,6 +44,9 @@ public sealed class Interpreter
     {
         _callDepth = 0;
         _steps = 0;
+        _deadlineTicks = _maxExecutionMilliseconds > 0
+            ? System.Environment.TickCount64 + _maxExecutionMilliseconds
+            : 0;
         _model.AddProgram(program);
         foreach (var stmt in program.Statements)
         {
@@ -55,18 +63,32 @@ public sealed class Interpreter
     {
         if (++_steps > _maxSteps)
             throw new AoiException($"Execution limit exceeded ({_maxSteps} steps). Possible infinite loop.");
-        if ((_steps & 0x3F) == 0) EnsureStack();
+        // Check wall clock / stack often enough to keep runaway code from freezing hosts
+        // (especially Blazor WASM, where a native stack overflow kills the tab).
+        if ((_steps & 0x1F) == 0)
+        {
+            CheckDeadline();
+            EnsureStack();
+        }
     }
 
     private void EnterCall()
     {
+        // Soft depth limit must fire before the native stack is exhausted.
         if (_callDepth >= _maxCallDepth)
             throw new AoiException($"Stack overflow: call depth exceeded {_maxCallDepth}.");
+        CheckDeadline();
         EnsureStack();
         _callDepth++;
     }
 
     private void LeaveCall() => _callDepth--;
+
+    private void CheckDeadline()
+    {
+        if (_deadlineTicks != 0 && System.Environment.TickCount64 > _deadlineTicks)
+            throw new AoiException($"Execution time limit exceeded ({_maxExecutionMilliseconds} ms).");
+    }
 
     private static void EnsureStack()
     {
