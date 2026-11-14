@@ -304,6 +304,27 @@ internal static class Program
                 let bad = new Box[bool] { v: true };
                 printLine bad.v;
                 """, "", "does not satisfy Ord[bool]"),
+
+            new("factorial_ok", """
+                op fac x: int -> int {
+                    if x == 0 then 1 else x * fac (x - 1)
+                }
+                printLine fac 10;
+                """, "3628800"),
+
+            new("factorial_overflow", """
+                op fac x: int -> int {
+                    if x == 0 then 1 else x * fac (x - 1)
+                }
+                printLine fac 21;
+                """, "", "Integer overflow"),
+
+            new("factorial_deep_recursion", """
+                op fac x: int -> int {
+                    if x == 0 then 1 else x * fac (x - 1)
+                }
+                printLine fac 10000;
+                """, "", "Stack overflow"),
         };
     }
 }
